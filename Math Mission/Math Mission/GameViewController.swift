@@ -26,6 +26,7 @@ class GameViewController: UIViewController {
     var starSpeed: Float = 0.3
     var lastQuestion: String = ""
     var currentPosition: Float = 0
+    var currentQuestionText: String = ""
     
     // Question statistics
     var totalMeteorsDestroyed = 0
@@ -321,6 +322,7 @@ class GameViewController: UIViewController {
         // Generate question
         let (question, answer, options) = generateMathQuestion()
         currentAnswer = answer
+        currentQuestionText = question
         attemptsLeft = maxAttempts
         
         // Update UI
@@ -429,9 +431,7 @@ class GameViewController: UIViewController {
             
             if attemptsLeft <= 0 {
                 // Track missed question
-                if let questionText = questionLabel.text {
-                    missedQuestions.append(questionText)
-                }
+                missedQuestions.append(currentQuestionText)
                 // Hit by meteor
                 meteorHitsShip()
             }
@@ -510,9 +510,7 @@ class GameViewController: UIViewController {
         }
         
         // Track missed question
-        if let questionText = questionLabel.text {
-            missedQuestions.append(questionText)
-        }
+        missedQuestions.append(currentQuestionText)
         
         // Lose a life
         lives -= 1

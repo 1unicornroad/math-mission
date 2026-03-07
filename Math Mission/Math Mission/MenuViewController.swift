@@ -7,7 +7,7 @@
 
 import UIKit
 
-enum Difficulty {
+enum Difficulty: Hashable {
     case easy    // 3 options, 2 tries
     case medium  // 3 options, 1 try
     case hard    // 4 options, 1 try
@@ -33,7 +33,7 @@ class MenuViewController: UIViewController {
         // Title
         let titleLabel = UILabel(frame: CGRect(x: 0, y: 80, width: view.bounds.width, height: 60))
         titleLabel.text = "MATH MISSION"
-        titleLabel.font = UIFont.boldSystemFont(ofSize: 48)
+        titleLabel.font = UIFont.orbitronBold(size: 38)
         titleLabel.textColor = .cyan
         titleLabel.textAlignment = .center
         view.addSubview(titleLabel)
@@ -41,7 +41,7 @@ class MenuViewController: UIViewController {
         // Subtitle
         let subtitleLabel = UILabel(frame: CGRect(x: 0, y: 140, width: view.bounds.width, height: 30))
         subtitleLabel.text = "Select Multiplication Tables"
-        subtitleLabel.font = UIFont.systemFont(ofSize: 20)
+        subtitleLabel.font = UIFont.exo2Medium(size: 20)
         subtitleLabel.textColor = .white
         subtitleLabel.textAlignment = .center
         view.addSubview(subtitleLabel)
@@ -61,7 +61,7 @@ class MenuViewController: UIViewController {
             
             let button = UIButton(frame: CGRect(x: x, y: y, width: buttonSize, height: buttonSize))
             button.setTitle("\(i)×", for: .normal)
-            button.titleLabel?.font = UIFont.boldSystemFont(ofSize: 24)
+            button.titleLabel?.font = UIFont.exo2Bold(size: 26)
             button.backgroundColor = UIColor(white: 0.2, alpha: 1.0)
             button.setTitleColor(.white, for: .normal)
             button.layer.cornerRadius = 10
@@ -73,12 +73,23 @@ class MenuViewController: UIViewController {
             tableButtons.append(button)
         }
         
-        // Difficulty selection (moved up since no ALL button)
-        let difficultyY = startY + 4 * (buttonSize + spacing) + 20
+        // Custom practice button - tight below times tables
+        let customY = startY + 3 * (buttonSize + spacing) + spacing
+        let customButton = UIButton(frame: CGRect(x: 20, y: customY, width: view.bounds.width - 40, height: 45))
+        customButton.setTitle("⚙️ CUSTOM PRACTICE", for: .normal)
+        customButton.titleLabel?.font = UIFont.orbitronMedium(size: 18)
+        customButton.backgroundColor = UIColor(red: 0.5, green: 0.3, blue: 0.7, alpha: 1.0)
+        customButton.setTitleColor(.white, for: .normal)
+        customButton.layer.cornerRadius = 10
+        customButton.addTarget(self, action: #selector(customButtonTapped), for: .touchUpInside)
+        view.addSubview(customButton)
+        
+        // Difficulty selection - tight below custom button
+        let difficultyY = customY + 55
         
         let difficultyLabel = UILabel(frame: CGRect(x: 0, y: difficultyY, width: view.bounds.width, height: 30))
         difficultyLabel.text = "Select Difficulty"
-        difficultyLabel.font = UIFont.systemFont(ofSize: 20)
+        difficultyLabel.font = UIFont.exo2Medium(size: 20)
         difficultyLabel.textColor = .white
         difficultyLabel.textAlignment = .center
         view.addSubview(difficultyLabel)
@@ -87,11 +98,11 @@ class MenuViewController: UIViewController {
         let diffButtonWidth: CGFloat = 110
         let diffStartX = (view.bounds.width - (CGFloat(difficulties.count) * (diffButtonWidth + spacing) - spacing)) / 2
         
-        for (index, (title, difficulty)) in difficulties.enumerated() {
+        for (index, (title, _)) in difficulties.enumerated() {
             let x = diffStartX + CGFloat(index) * (diffButtonWidth + spacing)
             let button = UIButton(frame: CGRect(x: x, y: difficultyY + 40, width: diffButtonWidth, height: 50))
             button.setTitle(title, for: .normal)
-            button.titleLabel?.font = UIFont.boldSystemFont(ofSize: 18)
+            button.titleLabel?.font = UIFont.exo2SemiBold(size: 19)
             button.backgroundColor = index == 0 ? UIColor(red: 0.3, green: 0.5, blue: 0.8, alpha: 1.0) : UIColor(white: 0.2, alpha: 1.0)
             button.setTitleColor(.white, for: .normal)
             button.layer.cornerRadius = 10
@@ -106,7 +117,7 @@ class MenuViewController: UIViewController {
         // Launch button
         launchButton = UIButton(frame: CGRect(x: view.bounds.width/2 - 100, y: view.bounds.height - 120, width: 200, height: 60))
         launchButton.setTitle("🚀 LAUNCH", for: .normal)
-        launchButton.titleLabel?.font = UIFont.boldSystemFont(ofSize: 28)
+        launchButton.titleLabel?.font = UIFont.orbitronBold(size: 28)
         launchButton.backgroundColor = UIColor(red: 0.8, green: 0.3, blue: 0.2, alpha: 1.0)
         launchButton.setTitleColor(.white, for: .normal)
         launchButton.layer.cornerRadius = 15
@@ -158,13 +169,21 @@ class MenuViewController: UIViewController {
         }
     }
     
+    @objc func customButtonTapped() {
+        let customVC = CustomTimesTableViewController()
+        customVC.selectedDifficulty = selectedDifficulty
+        customVC.modalPresentationStyle = .fullScreen
+        present(customVC, animated: true)
+    }
+    
     @objc func launchButtonTapped() {
-        // Create game view controller programmatically
-        let gameVC = GameViewController()
-        gameVC.selectedTables = Array(selectedTables)
-        gameVC.difficulty = selectedDifficulty
-        gameVC.modalPresentationStyle = .fullScreen
-        present(gameVC, animated: true)
+        // Go to ship selection
+        let shipSelectionVC = ShipSelectionViewController()
+        shipSelectionVC.selectedTables = Array(selectedTables)
+        shipSelectionVC.selectedDifficulty = selectedDifficulty
+        shipSelectionVC.isCustomMode = false
+        shipSelectionVC.modalPresentationStyle = .fullScreen
+        present(shipSelectionVC, animated: true)
     }
     
     override var prefersStatusBarHidden: Bool {

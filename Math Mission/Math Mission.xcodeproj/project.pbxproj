@@ -255,6 +255,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CXEQGTW49Y;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_KEY_UIAppFonts[sdk=*]" = "Orbitron-Regular.ttf Orbitron-Medium.ttf Orbitron-Bold.ttf Exo2-Regular.ttf Exo2-Medium.ttf Exo2-SemiBold.ttf Exo2-Bold.ttf";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;
@@ -288,6 +289,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = CXEQGTW49Y;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_KEY_UIAppFonts[sdk=*]" = "Orbitron-Regular.ttf Orbitron-Medium.ttf Orbitron-Bold.ttf Exo2-Regular.ttf Exo2-Medium.ttf Exo2-SemiBold.ttf Exo2-Bold.ttf";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				INFOPLIST_KEY_UIMainStoryboardFile = Main;

@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import SwiftUI
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -14,12 +15,44 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Launch MenuViewController programmatically
+        // Register custom fonts
+        registerFonts()
+        
+        // Launch SwiftUI MenuView
         window = UIWindow(frame: UIScreen.main.bounds)
-        let menuVC = MenuViewController()
-        window?.rootViewController = menuVC
+        let menuView = MenuView()
+        let hostingController = UIHostingController(rootView: menuView)
+        window?.rootViewController = hostingController
         window?.makeKeyAndVisible()
         return true
+    }
+    
+    func registerFonts() {
+        let fontNames = [
+            "Orbitron-Regular.ttf",
+            "Orbitron-Medium.ttf",
+            "Orbitron-Bold.ttf",
+            "Exo2-Regular.ttf",
+            "Exo2-Medium.ttf",
+            "Exo2-SemiBold.ttf",
+            "Exo2-Bold.ttf"
+        ]
+        
+        for fontName in fontNames {
+            guard let fontURL = Bundle.main.url(forResource: fontName.replacingOccurrences(of: ".ttf", with: ""), withExtension: "ttf"),
+                  let fontDataProvider = CGDataProvider(url: fontURL as CFURL),
+                  let font = CGFont(fontDataProvider) else {
+                print("⚠️ Failed to load font: \(fontName)")
+                continue
+            }
+            
+            var error: Unmanaged<CFError>?
+            if !CTFontManagerRegisterGraphicsFont(font, &error) {
+                print("⚠️ Failed to register font \(fontName): \(error.debugDescription)")
+            } else {
+                print("✅ Registered font: \(font.postScriptName as String? ?? fontName)")
+            }
+        }
     }
 
     func applicationWillResignActive(_ application: UIApplication) {

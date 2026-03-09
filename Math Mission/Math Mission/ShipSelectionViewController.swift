@@ -25,13 +25,13 @@ class ShipSelectionViewController: UIViewController {
     
     let ships: [SpaceShip] = [
         SpaceShip(name: "Nova Striker", modelName: "craft_speederA.dae", unlockRequirement: "Default", unlockLevel: 0),
-        SpaceShip(name: "Photon Blade", modelName: "craft_racer.dae", unlockRequirement: "Complete 1× or 2× table", unlockLevel: 1),
-        SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× or 4× table", unlockLevel: 2),
-        SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× or 6× table", unlockLevel: 3),
-        SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× or 8× table", unlockLevel: 4),
-        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 9× or 10× table", unlockLevel: 5),
-        SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× or 12× table", unlockLevel: 6),
-        SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium or Hard mode", unlockLevel: 7)
+        SpaceShip(name: "Photon Blade", modelName: "craft_racer.dae", unlockRequirement: "Complete 2× table", unlockLevel: 1),
+        SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× and 4× tables", unlockLevel: 2),
+        SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× and 6× tables", unlockLevel: 3),
+        SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× and 8× tables", unlockLevel: 4),
+        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 9× and 10× tables", unlockLevel: 5),
+        SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× and 12× tables", unlockLevel: 6),
+        SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium and Hard modes", unlockLevel: 7)
     ]
     
     var shipViews: [(view: UIView, ship: SpaceShip)] = []
@@ -204,19 +204,19 @@ class ShipSelectionViewController: UIViewController {
         // Unlock logic based on level
         switch ship.unlockLevel {
         case 1:
-            return completedTables.contains(1) || completedTables.contains(2)
+            return completedTables.contains(2)
         case 2:
-            return completedTables.contains(3) || completedTables.contains(4)
+            return completedTables.contains(3) && completedTables.contains(4)
         case 3:
-            return completedTables.contains(5) || completedTables.contains(6)
+            return completedTables.contains(5) && completedTables.contains(6)
         case 4:
-            return completedTables.contains(7) || completedTables.contains(8)
+            return completedTables.contains(7) && completedTables.contains(8)
         case 5:
-            return completedTables.contains(9) || completedTables.contains(10)
+            return completedTables.contains(9) && completedTables.contains(10)
         case 6:
-            return completedTables.contains(11) || completedTables.contains(12)
+            return completedTables.contains(11) && completedTables.contains(12)
         case 7:
-            return completedDifficulties.contains("medium") || completedDifficulties.contains("hard")
+            return completedDifficulties.contains("medium") && completedDifficulties.contains("hard")
         default:
             return false
         }

@@ -12,18 +12,26 @@ struct GameFlowView: View {
     let selectedTables: [Int]
     let customProblems: [String]
     let difficulty: Difficulty
+    let onExitToMenu: () -> Void
     
     @State private var showingUnlockScreen = false
     @State private var newlyUnlockedShips: [SpaceShip] = []
     @State private var currentCustomProblems: [String]
+    @State private var isReplaySession = false
     @State private var gameKey = UUID()  // Force recreate game view
-    @Environment(\.dismiss) private var dismiss
     
-    init(selectedShipModel: String, selectedTables: [Int], customProblems: [String], difficulty: Difficulty) {
+    init(
+        selectedShipModel: String,
+        selectedTables: [Int],
+        customProblems: [String],
+        difficulty: Difficulty,
+        onExitToMenu: @escaping () -> Void
+    ) {
         self.selectedShipModel = selectedShipModel
         self.selectedTables = selectedTables
         self.customProblems = customProblems
         self.difficulty = difficulty
+        self.onExitToMenu = onExitToMenu
         self._currentCustomProblems = State(initialValue: customProblems)
     }
     
@@ -34,9 +42,11 @@ struct GameFlowView: View {
                 selectedShipModel: selectedShipModel,
                 selectedTables: selectedTables,
                 customProblems: currentCustomProblems,
+                isReplaySession: isReplaySession,
                 difficulty: difficulty,
                 onGameOver: handleGameOver,
-                onPlayAgain: handlePlayAgain
+                onPlayAgain: handlePlayAgain,
+                onExitToMenu: onExitToMenu
             )
             .id(gameKey)  // Recreate when key changes
             .ignoresSafeArea()
@@ -45,7 +55,7 @@ struct GameFlowView: View {
             if showingUnlockScreen && !newlyUnlockedShips.isEmpty {
                 ShipUnlockView(unlockedShips: newlyUnlockedShips) {
                     // Continue to main menu after viewing unlocks
-                    dismiss()
+                    onExitToMenu()
                 }
                 .transition(.opacity)
                 .zIndex(1)
@@ -73,8 +83,7 @@ struct GameFlowView: View {
                 }
             }
         } else {
-            // No unlocks, go straight to menu
-            // The GameViewController's backToMenu will handle dismissal
+            onExitToMenu()
         }
     }
     
@@ -82,6 +91,7 @@ struct GameFlowView: View {
         print("🎮 Restarting game with \(missedProblems.count) missed problems")
         // Update to use missed problems as custom problems
         currentCustomProblems = missedProblems
+        isReplaySession = true
         // Force recreate the game view
         gameKey = UUID()
     }
@@ -138,12 +148,12 @@ struct GameFlowView: View {
         let allShips: [SpaceShip] = [
             SpaceShip(name: "Nova Striker", modelName: "craft_speederA.dae", unlockRequirement: "Default", unlockLevel: 0),
             SpaceShip(name: "Photon Blade", modelName: "craft_racer.dae", unlockRequirement: "Complete 2× table", unlockLevel: 1),
-            SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× or 4× table", unlockLevel: 2),
-            SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× or 6× table", unlockLevel: 3),
-            SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× or 8× table", unlockLevel: 4),
-            SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 9× or 10× table", unlockLevel: 5),
-            SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× or 12× table", unlockLevel: 6),
-            SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium or Hard mode", unlockLevel: 7)
+            SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× and 4× tables", unlockLevel: 2),
+            SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× and 6× tables", unlockLevel: 3),
+            SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× and 8× tables", unlockLevel: 4),
+            SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 9× and 10× tables", unlockLevel: 5),
+            SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× and 12× tables", unlockLevel: 6),
+            SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium and Hard modes", unlockLevel: 7)
         ]
         
         // Get previously unlocked ships
@@ -162,17 +172,17 @@ struct GameFlowView: View {
             case 1:
                 isNowUnlocked = previouslyCompletedTables.contains(2)  // Just 2× table now
             case 2:
-                isNowUnlocked = previouslyCompletedTables.contains(3) || previouslyCompletedTables.contains(4)
+                isNowUnlocked = previouslyCompletedTables.contains(3) && previouslyCompletedTables.contains(4)
             case 3:
-                isNowUnlocked = previouslyCompletedTables.contains(5) || previouslyCompletedTables.contains(6)
+                isNowUnlocked = previouslyCompletedTables.contains(5) && previouslyCompletedTables.contains(6)
             case 4:
-                isNowUnlocked = previouslyCompletedTables.contains(7) || previouslyCompletedTables.contains(8)
+                isNowUnlocked = previouslyCompletedTables.contains(7) && previouslyCompletedTables.contains(8)
             case 5:
-                isNowUnlocked = previouslyCompletedTables.contains(9) || previouslyCompletedTables.contains(10)
+                isNowUnlocked = previouslyCompletedTables.contains(9) && previouslyCompletedTables.contains(10)
             case 6:
-                isNowUnlocked = previouslyCompletedTables.contains(11) || previouslyCompletedTables.contains(12)
+                isNowUnlocked = previouslyCompletedTables.contains(11) && previouslyCompletedTables.contains(12)
             case 7:
-                isNowUnlocked = previouslyCompletedDifficulties.contains("medium") || previouslyCompletedDifficulties.contains("hard")
+                isNowUnlocked = previouslyCompletedDifficulties.contains("medium") && previouslyCompletedDifficulties.contains("hard")
             default:
                 isNowUnlocked = false
             }
@@ -203,20 +213,24 @@ struct GameViewControllerWrapper: UIViewControllerRepresentable {
     let selectedShipModel: String
     let selectedTables: [Int]
     let customProblems: [String]
+    let isReplaySession: Bool
     let difficulty: Difficulty
     let onGameOver: (Int, Int, [String: Int]) -> Void
     let onPlayAgain: ([String]) -> Void
+    let onExitToMenu: () -> Void
     
     func makeUIViewController(context: Context) -> GameViewController {
         let gameVC = GameViewController()
         gameVC.selectedShipModel = selectedShipModel
         gameVC.selectedTables = selectedTables
         gameVC.customProblems = customProblems
+        gameVC.isReplaySession = isReplaySession
         gameVC.difficulty = difficulty
         
         // Set callbacks
         context.coordinator.onGameOver = onGameOver
         context.coordinator.onPlayAgain = onPlayAgain
+        context.coordinator.onExitToMenu = onExitToMenu
         
         gameVC.gameOverCallback = { meteorsDestroyed, firstAttemptCorrect, perfectProblems in
             context.coordinator.onGameOver(meteorsDestroyed, firstAttemptCorrect, perfectProblems)
@@ -226,10 +240,17 @@ struct GameViewControllerWrapper: UIViewControllerRepresentable {
             context.coordinator.onPlayAgain(missedProblems)
         }
         
+        gameVC.exitToMenuCallback = {
+            context.coordinator.onExitToMenu()
+        }
+        
         return gameVC
     }
     
-    func updateUIViewController(_ uiViewController: GameViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: GameViewController, context: Context) {
+        uiViewController.customProblems = customProblems
+        uiViewController.isReplaySession = isReplaySession
+    }
     
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -238,5 +259,6 @@ struct GameViewControllerWrapper: UIViewControllerRepresentable {
     class Coordinator {
         var onGameOver: (Int, Int, [String: Int]) -> Void = { _, _, _ in }
         var onPlayAgain: ([String]) -> Void = { _ in }
+        var onExitToMenu: () -> Void = {}
     }
 }

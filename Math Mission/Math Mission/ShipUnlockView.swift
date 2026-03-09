@@ -17,125 +17,129 @@ struct ShipUnlockView: View {
     
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            ArcadeBackground()
             
-            VStack(spacing: 30) {
-                // Title with animation
-                Text("🎉 SHIP UNLOCKED! 🎉")
-                    .font(.custom("Orbitron-Bold", size: 32))
-                    .foregroundColor(.yellow)
-                    .shadow(color: .yellow, radius: isPulsing ? 20 : 10)
-                    .scaleEffect(isPulsing ? 1.05 : 1.0)
-                    .padding(.top, 60)
+            VStack(spacing: 20) {
+                Spacer(minLength: 28)
                 
-                // Ship display
+                VStack(spacing: 8) {
+                    Text("NEW SHIP")
+                        .font(.custom("Orbitron-Bold", size: 32))
+                        .foregroundColor(.white)
+                        .shadow(color: ArcadePalette.signal.opacity(isPulsing ? 0.65 : 0.35), radius: isPulsing ? 20 : 10)
+                        .scaleEffect(isPulsing ? 1.03 : 1.0)
+                    
+                    Text("ADDED TO HANGAR")
+                        .font(.custom("Exo 2 SemiBold", size: 13))
+                        .foregroundColor(ArcadePalette.signalBright)
+                        .tracking(1.6)
+                    
+                    if unlockedShips.count > 1 {
+                        Text("\(currentIndex + 1) / \(unlockedShips.count)")
+                            .font(.custom("Exo 2 SemiBold", size: 12))
+                            .foregroundColor(ArcadePalette.textSecondary)
+                            .tracking(1.2)
+                    }
+                }
+                
                 if !unlockedShips.isEmpty {
-                    VStack(spacing: 20) {
-                        // 3D Ship preview
-                        SceneKitShipView(modelName: unlockedShips[currentIndex].modelName, isUnlocked: true)
+                    ArcadePanel(accent: ArcadePalette.signal) {
+                        VStack(spacing: 16) {
+                            ZStack {
+                                BeveledPanelShape(cut: 18)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [ArcadePalette.panelBottom.opacity(0.96), Color.black.opacity(0.7)],
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    )
+                                BeveledPanelShape(cut: 18)
+                                    .stroke(ArcadePalette.panelLine, lineWidth: 1.2)
+                                
+                                ArcadeAssetPreviewView(
+                                    modelName: unlockedShips[currentIndex].modelName,
+                                    cameraZ: 3.4,
+                                    scale: 1.05,
+                                    yRotation: Float.pi / 4,
+                                    rotationDuration: 6
+                                )
+                                .padding(10)
+                            }
                             .frame(height: 280)
-                            .cornerRadius(20)
-                        
-                        // Ship name
-                        Text(unlockedShips[currentIndex].name)
-                            .font(.custom("Orbitron-Bold", size: 28))
-                            .foregroundColor(.cyan)
-                            .shadow(color: .cyan, radius: 10)
-                        
-                        // Unlock requirement met
-                        Text("✓ \(unlockedShips[currentIndex].unlockRequirement)")
-                            .font(.custom("Exo 2 Medium", size: 16))
-                            .foregroundColor(.green)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 20)
+                            
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(unlockedShips[currentIndex].name.uppercased())
+                                    .font(.custom("Orbitron-Bold", size: 27))
+                                    .foregroundColor(.white)
+                                
+                                Text(unlockedShips[currentIndex].unlockRequirement)
+                                    .font(.custom("Exo 2 Medium", size: 15))
+                                    .foregroundColor(ArcadePalette.textSecondary)
+                            }
+                        }
                     }
-                    .padding(20)
-                    .background(
-                        LinearGradient(
-                            colors: [Color(white: 0.15), Color(white: 0.08)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .cornerRadius(25)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 25)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [.yellow, .orange],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 4
-                            )
-                    )
-                    .shadow(color: .yellow.opacity(0.6), radius: 20)
-                    .padding(.horizontal, 30)
+                    .padding(.horizontal, 18)
                 }
                 
-                Spacer()
-                
-                // Pagination dots if multiple ships
                 if unlockedShips.count > 1 {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
                         ForEach(0..<unlockedShips.count, id: \.self) { index in
-                            Circle()
-                                .fill(currentIndex == index ? Color.cyan : Color.gray.opacity(0.5))
-                                .frame(width: 10, height: 10)
+                            Capsule()
+                                .fill(index == currentIndex ? ArcadePalette.signalBright : Color.white.opacity(0.14))
+                                .frame(width: index == currentIndex ? 28 : 10, height: 8)
                         }
                     }
-                    .padding(.bottom, 10)
                 }
                 
-                // Navigation buttons
-                HStack(spacing: 20) {
-                    if unlockedShips.count > 1 && currentIndex > 0 {
-                        Button(action: {
-                            currentIndex -= 1
-                        }) {
-                            Text("← Previous")
-                                .font(.custom("Exo 2 SemiBold", size: 16))
-                                .foregroundColor(.white)
-                                .frame(width: 120, height: 50)
-                                .background(Color(white: 0.3))
-                                .cornerRadius(10)
+                Spacer(minLength: 0)
+                
+                ArcadePanel(accent: ArcadePalette.signal) {
+                    HStack(spacing: 12) {
+                        if unlockedShips.count > 1 {
+                            Button {
+                                currentIndex = max(0, currentIndex - 1)
+                            } label: {
+                                ArcadeSecondaryActionLabel(title: "Previous")
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: 126)
+                            .opacity(currentIndex > 0 ? 1.0 : 0.35)
+                            .disabled(currentIndex == 0)
                         }
-                    }
-                    
-                    Spacer()
-                    
-                    if unlockedShips.count > 1 && currentIndex < unlockedShips.count - 1 {
-                        Button(action: {
-                            currentIndex += 1
-                        }) {
-                            Text("Next →")
-                                .font(.custom("Exo 2 SemiBold", size: 16))
-                                .foregroundColor(.white)
-                                .frame(width: 120, height: 50)
-                                .background(Color(white: 0.3))
-                                .cornerRadius(10)
+                        
+                        Button {
+                            if unlockedShips.count > 1 && currentIndex < unlockedShips.count - 1 {
+                                currentIndex += 1
+                            } else {
+                                onContinue()
+                            }
+                        } label: {
+                            ArcadePrimaryActionLabel(
+                                title: unlockedShips.count > 1 && currentIndex < unlockedShips.count - 1 ? "Next" : "Continue"
+                            )
                         }
-                    } else {
-                        Button(action: onContinue) {
-                            Text("CONTINUE")
-                                .font(.custom("Orbitron-Bold", size: 20))
-                                .foregroundColor(.white)
-                                .frame(width: 180, height: 50)
-                                .background(Color(red: 0.8, green: 0.3, blue: 0.2))
-                                .cornerRadius(10)
-                                .shadow(color: .orange, radius: 10)
-                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 30)
-                .padding(.bottom, 40)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 18)
             }
         }
-        .onAppear {
+        .onAppear(perform: restartPulse)
+        .onDisappear {
+            isPulsing = false
+        }
+        .statusBar(hidden: true)
+    }
+    
+    private func restartPulse() {
+        currentIndex = min(currentIndex, max(unlockedShips.count - 1, 0))
+        isPulsing = false
+        DispatchQueue.main.async {
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                 isPulsing = true
             }
         }
-        .statusBar(hidden: true)
     }
 }

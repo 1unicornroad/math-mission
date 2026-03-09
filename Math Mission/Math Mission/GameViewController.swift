@@ -41,22 +41,46 @@ class GameViewController: UIViewController {
     // Game settings from menu
     var selectedTables: [Int] = [2, 3, 4, 5]  // Default
     var customProblems: [String] = []  // For custom mode like ["3×4", "5×7"]
+    var isReplaySession = false
     var difficulty: Difficulty = .easy
     var maxAttempts: Int = 2
     var selectedShipModel: String = "craft_speederA.dae"
+    var didCompleteReplaySession = false
     var meteor: SCNNode?
     var questionLabel: UILabel!
+    var questionPanel: UIView!
     var streakLabel: UILabel!
+    var streakTitleLabel: UILabel!
+    var answersRightLabel: UILabel!
+    var answersRightTitleLabel: UILabel!
     var livesContainer: UIView!
+    var hullStatusLabel: UILabel!
     var liveCraftNodes: [SCNView] = []
+    var exitButton: UIButton!
+    var starfieldTimer: Timer?
+    var isEndingSession = false
     
     // Control panel buttons
     var answerButtons: [UIButton] = []
+    var statusPanel: UIView!
     var controlPanel: UIView!
+    var gameOverOverlay: UIView?
     
     // Callback for game over
     var gameOverCallback: ((Int, Int, [String: Int]) -> Void)?
     var playAgainCallback: (([String]) -> Void)?
+    var exitToMenuCallback: (() -> Void)?
+    
+    let arcadeSpaceTop = UIColor(red: 0.04, green: 0.08, blue: 0.16, alpha: 1.0)
+    let arcadePanel = UIColor(red: 0.12, green: 0.14, blue: 0.19, alpha: 0.94)
+    let arcadePanelSoft = UIColor(red: 0.18, green: 0.21, blue: 0.27, alpha: 0.96)
+    let arcadeSignal = UIColor(red: 0.98, green: 0.46, blue: 0.18, alpha: 1.0)
+    let arcadeSignalBright = UIColor(red: 1.00, green: 0.69, blue: 0.34, alpha: 1.0)
+    let arcadeCool = UIColor(red: 0.64, green: 0.78, blue: 0.94, alpha: 1.0)
+    let arcadeSuccess = UIColor(red: 0.48, green: 0.87, blue: 0.52, alpha: 1.0)
+    let arcadeWarning = UIColor(red: 0.99, green: 0.74, blue: 0.24, alpha: 1.0)
+    let arcadeDanger = UIColor(red: 0.93, green: 0.33, blue: 0.27, alpha: 1.0)
+    let replayMasteryThreshold = 3
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -87,6 +111,211 @@ class GameViewController: UIViewController {
         spawnMeteorWithQuestion()
     }
     
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        
+        guard livesContainer != nil, statusPanel != nil, questionPanel != nil, controlPanel != nil else {
+            return
+        }
+        
+        layoutGameplayHUD()
+    }
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        starfieldTimer?.invalidate()
+        starfieldTimer = nil
+        AudioManager.shared.stopThruster()
+    }
+    
+    func applyArcadePanelStyle(
+        to view: UIView,
+        accent: UIColor,
+        fillColors: [UIColor],
+        cornerCut: CGFloat
+    ) {
+        guard view.bounds.width > 0, view.bounds.height > 0 else { return }
+        
+        view.backgroundColor = .clear
+        view.layer.masksToBounds = false
+        view.layer.sublayers?
+            .filter { $0.name?.hasPrefix("arcade.") == true }
+            .forEach { $0.removeFromSuperlayer() }
+        
+        let fillPath = beveledPath(in: view.bounds.insetBy(dx: 0.5, dy: 0.5), cut: cornerCut)
+        
+        let gradient = CAGradientLayer()
+        gradient.name = "arcade.gradient"
+        gradient.frame = view.bounds
+        gradient.colors = fillColors.map { $0.cgColor }
+        gradient.startPoint = CGPoint(x: 0.5, y: 0.0)
+        gradient.endPoint = CGPoint(x: 0.5, y: 1.0)
+        
+        let gradientMask = CAShapeLayer()
+        gradientMask.path = fillPath.cgPath
+        gradient.mask = gradientMask
+        view.layer.insertSublayer(gradient, at: 0)
+        
+        let gloss = CAGradientLayer()
+        gloss.name = "arcade.gloss"
+        gloss.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: max(22, view.bounds.height * 0.26))
+        gloss.colors = [
+            accent.withAlphaComponent(0.22).cgColor,
+            UIColor.clear.cgColor
+        ]
+        gloss.startPoint = CGPoint(x: 0.5, y: 0.0)
+        gloss.endPoint = CGPoint(x: 0.5, y: 1.0)
+        
+        let glossMask = CAShapeLayer()
+        glossMask.path = fillPath.cgPath
+        gloss.mask = glossMask
+        view.layer.insertSublayer(gloss, above: gradient)
+        
+        let border = CAShapeLayer()
+        border.name = "arcade.border"
+        border.path = fillPath.cgPath
+        border.fillColor = UIColor.clear.cgColor
+        border.strokeColor = UIColor.white.withAlphaComponent(0.16).cgColor
+        border.lineWidth = 1.4
+        view.layer.addSublayer(border)
+        
+        let innerRect = view.bounds.insetBy(dx: 7, dy: 7)
+        if innerRect.width > 0, innerRect.height > 0 {
+            let innerBorder = CAShapeLayer()
+            innerBorder.name = "arcade.inner-border"
+            innerBorder.path = beveledPath(in: innerRect, cut: max(8, cornerCut - 7)).cgPath
+            innerBorder.fillColor = UIColor.clear.cgColor
+            innerBorder.strokeColor = accent.withAlphaComponent(0.30).cgColor
+            innerBorder.lineWidth = 1.5
+            view.layer.addSublayer(innerBorder)
+        }
+        
+        view.layer.shadowColor = accent.withAlphaComponent(0.30).cgColor
+        view.layer.shadowOpacity = 1.0
+        view.layer.shadowRadius = 14
+        view.layer.shadowOffset = CGSize(width: 0, height: 8)
+        view.layer.shadowPath = fillPath.cgPath
+    }
+    
+    func beveledPath(in rect: CGRect, cut: CGFloat) -> UIBezierPath {
+        let bevel = min(cut, min(rect.width, rect.height) * 0.3)
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: rect.minX + bevel, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - bevel, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + bevel))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - bevel))
+        path.addLine(to: CGPoint(x: rect.maxX - bevel, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + bevel, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - bevel))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + bevel))
+        path.close()
+        return path
+    }
+    
+    func styleAnswerButton(_ button: UIButton, accent: UIColor, fillColors: [UIColor]) {
+        applyArcadePanelStyle(
+            to: button,
+            accent: accent,
+            fillColors: fillColors,
+            cornerCut: 14
+        )
+        button.setTitleColor(.white, for: .normal)
+        button.setTitleColor(UIColor.white.withAlphaComponent(0.48), for: .disabled)
+        button.titleLabel?.font = UIFont.orbitronBold(size: 30)
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.7
+    }
+    
+    func styleSmallPanelButton(_ button: UIButton, title: String, accent: UIColor) {
+        applyArcadePanelStyle(
+            to: button,
+            accent: accent,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 12
+        )
+        button.setTitle(title.uppercased(), for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.setTitleColor(UIColor.white.withAlphaComponent(0.48), for: .disabled)
+        button.titleLabel?.font = UIFont.exo2SemiBold(size: 13)
+        button.titleLabel?.adjustsFontSizeToFitWidth = true
+        button.titleLabel?.minimumScaleFactor = 0.8
+    }
+    
+    func configureAssetPreview(
+        on sceneView: SCNView,
+        modelName: String,
+        scale: Float,
+        cameraZ: Float,
+        yRotation: Float,
+        isDimmed: Bool = false,
+        rotationDuration: Double? = nil
+    ) {
+        sceneView.backgroundColor = .clear
+        sceneView.autoenablesDefaultLighting = false
+        sceneView.allowsCameraControl = false
+        sceneView.isUserInteractionEnabled = false
+        sceneView.scene = nil
+        
+        let scene = SCNScene()
+        sceneView.scene = scene
+        
+        let ambientLight = SCNNode()
+        ambientLight.light = SCNLight()
+        ambientLight.light?.type = .ambient
+        ambientLight.light?.color = UIColor(white: 0.44, alpha: 1.0)
+        scene.rootNode.addChildNode(ambientLight)
+        
+        let keyLight = SCNNode()
+        keyLight.light = SCNLight()
+        keyLight.light?.type = .omni
+        keyLight.light?.color = UIColor(red: 1.0, green: 0.82, blue: 0.62, alpha: 1.0)
+        keyLight.position = SCNVector3(x: 4, y: 6, z: 8)
+        scene.rootNode.addChildNode(keyLight)
+        
+        let fillLight = SCNNode()
+        fillLight.light = SCNLight()
+        fillLight.light?.type = .omni
+        fillLight.light?.color = UIColor(red: 0.66, green: 0.80, blue: 0.97, alpha: 0.75)
+        fillLight.position = SCNVector3(x: -5, y: 2, z: 5)
+        scene.rootNode.addChildNode(fillLight)
+        
+        if let assetScene = SCNScene(named: "art.scnassets/\(modelName)") {
+            let assetNode = SCNNode()
+            for child in assetScene.rootNode.childNodes {
+                assetNode.addChildNode(child)
+            }
+            
+            assetNode.scale = SCNVector3(x: scale, y: scale, z: scale)
+            assetNode.eulerAngles = SCNVector3(x: 0.12, y: yRotation, z: 0)
+            scene.rootNode.addChildNode(assetNode)
+            
+            if isDimmed {
+                assetNode.enumerateChildNodes { node, _ in
+                    node.geometry?.firstMaterial?.diffuse.contents = UIColor(white: 0.16, alpha: 1.0)
+                    node.geometry?.firstMaterial?.emission.contents = UIColor.black
+                    node.geometry?.firstMaterial?.specular.contents = UIColor.black
+                    node.geometry?.firstMaterial?.lightingModel = .constant
+                }
+            }
+            
+            if let rotationDuration {
+                let rotateAction = SCNAction.repeatForever(
+                    SCNAction.rotateBy(x: 0, y: 0.8, z: 0, duration: rotationDuration)
+                )
+                assetNode.runAction(rotateAction)
+            }
+        }
+        
+        let cameraNode = SCNNode()
+        cameraNode.camera = SCNCamera()
+        cameraNode.camera?.fieldOfView = 38
+        cameraNode.position = SCNVector3(x: 0, y: 0.2, z: cameraZ)
+        scene.rootNode.addChildNode(cameraNode)
+    }
+    
+    func updateMissionLabels() {
+    }
+    
     func setupScene() {
         // Create SCNView programmatically if needed
         if let existingView = self.view as? SCNView {
@@ -98,7 +327,7 @@ class GameViewController: UIViewController {
             sceneView = newSceneView
         }
         
-        sceneView.showsStatistics = true
+        sceneView.showsStatistics = false
         sceneView.allowsCameraControl = false
         sceneView.autoenablesDefaultLighting = false
         sceneView.backgroundColor = .black
@@ -141,31 +370,34 @@ class GameViewController: UIViewController {
         // Left engine flame (back of ship in world coords after rotation)
         let leftFlame = createFlameParticles()
         let leftEngineNode = SCNNode()
-        leftEngineNode.position = SCNVector3(x: -0.25, y: 0, z: 0.8)  // Further out from ship
+        leftEngineNode.position = SCNVector3(x: -0.28, y: -0.02, z: -1.25)
         leftEngineNode.addParticleSystem(leftFlame)
         spaceship.addChildNode(leftEngineNode)
         
         // Right engine flame
         let rightFlame = createFlameParticles()
         let rightEngineNode = SCNNode()
-        rightEngineNode.position = SCNVector3(x: 0.25, y: 0, z: 0.8)  // Further out from ship
+        rightEngineNode.position = SCNVector3(x: 0.28, y: -0.02, z: -1.25)
         rightEngineNode.addParticleSystem(rightFlame)
         spaceship.addChildNode(rightEngineNode)
     }
     
     func createFlameParticles() -> SCNParticleSystem {
         let particles = SCNParticleSystem()
-        particles.birthRate = 80
-        particles.particleLifeSpan = 0.3
-        particles.particleSize = 0.04  // Smaller
-        particles.emitterShape = SCNSphere(radius: 0.02)
-        particles.particleColor = UIColor.cyan
-        particles.particleColorVariation = SCNVector4(x: 0, y: 0.3, z: 0.5, w: 0)
+        particles.birthRate = 220
+        particles.particleLifeSpan = 0.16
+        particles.particleLifeSpanVariation = 0.03
+        particles.particleSize = 0.016
+        particles.particleSizeVariation = 0.006
+        particles.emitterShape = SCNSphere(radius: 0.018)
+        particles.particleColor = UIColor.cyan.withAlphaComponent(0.94)
+        particles.particleColorVariation = SCNVector4(x: 0.06, y: 0.18, z: 0.30, w: 0)
         particles.blendMode = .additive
-        particles.particleVelocity = 4.0
-        particles.particleVelocityVariation = 0.5
+        particles.particleVelocity = 3.8
+        particles.particleVelocityVariation = 0.35
+        particles.acceleration = SCNVector3(x: 0, y: 0, z: 1.1)
         particles.emittingDirection = SCNVector3(x: 0, y: 0, z: -1)  // Backward away from ship
-        particles.spreadingAngle = 10
+        particles.spreadingAngle = 6
         
         return particles
     }
@@ -187,6 +419,60 @@ class GameViewController: UIViewController {
             stars.append(star)
         }
     }
+
+
+    func midpoint(from start: SCNVector3, to end: SCNVector3) -> SCNVector3 {
+        SCNVector3(
+            x: (start.x + end.x) / 2,
+            y: (start.y + end.y) / 2,
+            z: (start.z + end.z) / 2
+        )
+    }
+
+    func distance(from start: SCNVector3, to end: SCNVector3) -> CGFloat {
+        let dx = CGFloat(end.x - start.x)
+        let dy = CGFloat(end.y - start.y)
+        let dz = CGFloat(end.z - start.z)
+        return sqrt(dx * dx + dy * dy + dz * dz)
+    }
+    
+    func layoutStatusMetrics() {
+        let horizontalPadding: CGFloat = 8
+        let columnSpacing: CGFloat = 6
+        let columnWidth = (statusPanel.bounds.width - horizontalPadding * 2 - columnSpacing) / 2
+        let leftX = horizontalPadding
+        let rightX = leftX + columnWidth + columnSpacing
+        let titleHeight: CGFloat = 12
+        let valueHeight: CGFloat = 36
+        let metricGap: CGFloat = 4
+        let contentHeight = titleHeight + metricGap + valueHeight
+        let startY = floor((statusPanel.bounds.height - contentHeight) / 2)
+        
+        streakTitleLabel.frame = CGRect(x: leftX, y: startY, width: columnWidth, height: titleHeight)
+        streakLabel.frame = CGRect(x: leftX, y: startY + titleHeight + metricGap, width: columnWidth, height: valueHeight)
+        answersRightTitleLabel.frame = CGRect(x: rightX, y: startY, width: columnWidth, height: titleHeight)
+        answersRightLabel.frame = CGRect(x: rightX, y: startY + titleHeight + metricGap, width: columnWidth, height: valueHeight)
+    }
+    
+    func applyMetricValue(_ value: Int, to label: UILabel, accent: UIColor) {
+        let text = "\(value)"
+        let fontSize: CGFloat
+        
+        switch text.count {
+        case 0...2:
+            fontSize = 28
+        case 3:
+            fontSize = 22
+        case 4:
+            fontSize = 18
+        default:
+            fontSize = 16
+        }
+        
+        label.font = UIFont.orbitronBold(size: fontSize)
+        label.textColor = accent
+        label.text = text
+    }
     
     func setupLighting() {
         // Ambient light
@@ -207,90 +493,242 @@ class GameViewController: UIViewController {
     }
     
     func setupUI() {
-        // Control panel at bottom
-        let panelHeight: CGFloat = 150
-        controlPanel = UIView(frame: CGRect(x: 0, y: view.bounds.height - panelHeight, width: view.bounds.width, height: panelHeight))
-        controlPanel.backgroundColor = UIColor(white: 0.1, alpha: 0.9)
-        view.addSubview(controlPanel)
+        let topInset = max(view.safeAreaInsets.top, 20)
+        let bottomInset = max(view.safeAreaInsets.bottom, 12)
         
-        // Question label - positioned in middle of screen for visibility
-        questionLabel = UILabel(frame: CGRect(x: 20, y: view.bounds.height / 2 - 100, width: view.bounds.width - 40, height: 60))
-        questionLabel.textAlignment = .center
-        questionLabel.font = UIFont.exo2Bold(size: 50)
-        questionLabel.textColor = .white
-        questionLabel.backgroundColor = UIColor(white: 0.0, alpha: 0.7)
-        questionLabel.layer.cornerRadius = 10
-        questionLabel.layer.masksToBounds = true
-        view.addSubview(questionLabel)
-        
-        // Lives container with 3D craft icons at top left
-        livesContainer = UIView(frame: CGRect(x: 10, y: 50, width: 220, height: 60))
+        livesContainer = UIView(frame: CGRect(x: 16, y: topInset + 18, width: 188, height: 104))
+        applyArcadePanelStyle(
+            to: livesContainer,
+            accent: arcadeSignal,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 18
+        )
         view.addSubview(livesContainer)
         
-        setupLivesDisplay()
+        hullStatusLabel = UILabel(frame: CGRect(x: 16, y: 14, width: 84, height: 18))
+        hullStatusLabel.font = UIFont.orbitronMedium(size: 14)
+        hullStatusLabel.textColor = arcadeSignalBright
+        hullStatusLabel.text = "SHIPS"
+        hullStatusLabel.adjustsFontSizeToFitWidth = true
+        hullStatusLabel.minimumScaleFactor = 0.8
+        livesContainer.addSubview(hullStatusLabel)
+
+        exitButton = UIButton(frame: CGRect(x: livesContainer.bounds.width - 84, y: 10, width: 68, height: 28))
+        styleSmallPanelButton(exitButton, title: "Exit", accent: arcadeDanger)
+        exitButton.addTarget(self, action: #selector(exitGame), for: .touchUpInside)
+        livesContainer.addSubview(exitButton)
         
-        // Streak/Score label at top right
-        streakLabel = UILabel(frame: CGRect(x: view.bounds.width - 200, y: 50, width: 190, height: 60))
-        streakLabel.textAlignment = .right
-        streakLabel.font = UIFont.exo2SemiBold(size: 18)
-        streakLabel.textColor = .cyan
-        streakLabel.numberOfLines = 2
+        statusPanel = UIView(frame: CGRect(x: view.bounds.width - 168, y: topInset + 18, width: 152, height: 104))
+        applyArcadePanelStyle(
+            to: statusPanel,
+            accent: arcadeCool,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 18
+        )
+        view.addSubview(statusPanel)
+        
+        streakTitleLabel = UILabel(frame: CGRect(x: 12, y: 10, width: statusPanel.bounds.width - 24, height: 12))
+        streakTitleLabel.text = "STREAK"
+        streakTitleLabel.font = UIFont.exo2SemiBold(size: 10)
+        streakTitleLabel.textColor = UIColor.white.withAlphaComponent(0.76)
+        streakTitleLabel.textAlignment = .center
+        statusPanel.addSubview(streakTitleLabel)
+        
+        streakLabel = UILabel(frame: CGRect(x: 12, y: 30, width: statusPanel.bounds.width - 24, height: 36))
+        streakLabel.textAlignment = .center
+        streakLabel.font = UIFont.orbitronBold(size: 28)
+        streakLabel.textColor = arcadeSignalBright
+        streakLabel.adjustsFontSizeToFitWidth = true
+        streakLabel.minimumScaleFactor = 0.45
+        statusPanel.addSubview(streakLabel)
+        
+        answersRightTitleLabel = UILabel(frame: CGRect(x: 12, y: 56, width: statusPanel.bounds.width - 24, height: 12))
+        answersRightTitleLabel.text = "TOTAL"
+        answersRightTitleLabel.font = UIFont.exo2SemiBold(size: 10)
+        answersRightTitleLabel.textColor = UIColor.white.withAlphaComponent(0.76)
+        answersRightTitleLabel.textAlignment = .center
+        statusPanel.addSubview(answersRightTitleLabel)
+        
+        answersRightLabel = UILabel(frame: CGRect(x: 12, y: 30, width: statusPanel.bounds.width - 24, height: 36))
+        answersRightLabel.textAlignment = .center
+        answersRightLabel.font = UIFont.orbitronBold(size: 28)
+        answersRightLabel.textColor = arcadeCool
+        answersRightLabel.adjustsFontSizeToFitWidth = true
+        answersRightLabel.minimumScaleFactor = 0.45
+        statusPanel.addSubview(answersRightLabel)
+        layoutStatusMetrics()
         updateStreakDisplay()
-        view.addSubview(streakLabel)
+        
+        questionPanel = UIView(frame: CGRect(x: 16, y: livesContainer.frame.maxY + 22, width: view.bounds.width - 32, height: 112))
+        applyArcadePanelStyle(
+            to: questionPanel,
+            accent: arcadeSignalBright,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 20
+        )
+        view.addSubview(questionPanel)
+        
+        questionLabel = UILabel(frame: CGRect(x: 18, y: 24, width: questionPanel.bounds.width - 36, height: 60))
+        questionLabel.textAlignment = .center
+        questionLabel.font = UIFont.orbitronBold(size: 44)
+        questionLabel.textColor = .white
+        questionLabel.adjustsFontSizeToFitWidth = true
+        questionLabel.minimumScaleFactor = 0.7
+        questionPanel.addSubview(questionLabel)
+        
+        let panelHeight: CGFloat = 150
+        controlPanel = UIView(frame: CGRect(x: 16, y: view.bounds.height - panelHeight - bottomInset - 12, width: view.bounds.width - 32, height: panelHeight))
+        applyArcadePanelStyle(
+            to: controlPanel,
+            accent: arcadeSignal,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 20
+        )
+        view.addSubview(controlPanel)
         
         // Answer buttons (3 for easy/medium, 4 for hard)
         // Store buttons in array, will position them dynamically based on count
-        let buttonWidth: CGFloat = 85
-        let spacing: CGFloat = 15
         let maxButtons = 4
         
         for i in 0..<maxButtons {
-            // Position will be updated in spawnMeteorWithQuestion
-            let button = UIButton(frame: CGRect(x: 0, y: 40, width: buttonWidth, height: 80))
-            button.backgroundColor = UIColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1.0)
+            let button = UIButton(frame: CGRect(x: 0, y: controlPanel.bounds.height - 116, width: 82, height: 82))
             button.setTitleColor(.white, for: .normal)
-            button.titleLabel?.font = UIFont.exo2Bold(size: 34)
-            button.layer.cornerRadius = 10
+            button.titleLabel?.font = UIFont.orbitronBold(size: 30)
             button.tag = i
             button.addTarget(self, action: #selector(answerTapped(_:)), for: .touchUpInside)
+            styleAnswerButton(
+                button,
+                accent: arcadeCool,
+                fillColors: [arcadeCool.withAlphaComponent(0.42), arcadePanelSoft]
+            )
             controlPanel.addSubview(button)
             answerButtons.append(button)
+        }
+        
+        layoutGameplayHUD()
+        setupLivesDisplay()
+    }
+    
+    func layoutGameplayHUD() {
+        let sideInset: CGFloat = 16
+        let topInset = max(view.safeAreaInsets.top, 20)
+        let bottomInset = max(view.safeAreaInsets.bottom, 12)
+        let topPanelY = topInset + 18
+        let topPanelHeight: CGFloat = 104
+        let questionPanelHeight: CGFloat = 112
+        let controlPanelHeight: CGFloat = 150
+        
+        livesContainer.frame = CGRect(x: sideInset, y: topPanelY, width: 188, height: topPanelHeight)
+        statusPanel.frame = CGRect(x: view.bounds.width - sideInset - 152, y: topPanelY, width: 152, height: topPanelHeight)
+        questionPanel.frame = CGRect(
+            x: sideInset,
+            y: livesContainer.frame.maxY + 22,
+            width: view.bounds.width - sideInset * 2,
+            height: questionPanelHeight
+        )
+        controlPanel.frame = CGRect(
+            x: sideInset,
+            y: view.bounds.height - controlPanelHeight - bottomInset - 12,
+            width: view.bounds.width - sideInset * 2,
+            height: controlPanelHeight
+        )
+        
+        applyArcadePanelStyle(
+            to: livesContainer,
+            accent: arcadeSignal,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 18
+        )
+        applyArcadePanelStyle(
+            to: statusPanel,
+            accent: arcadeCool,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 18
+        )
+        applyArcadePanelStyle(
+            to: questionPanel,
+            accent: arcadeSignalBright,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 20
+        )
+        applyArcadePanelStyle(
+            to: controlPanel,
+            accent: arcadeSignal,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 20
+        )
+        
+        hullStatusLabel.frame = CGRect(x: 16, y: 14, width: 84, height: 18)
+        exitButton.frame = CGRect(x: livesContainer.bounds.width - 84, y: 10, width: 68, height: 28)
+        styleSmallPanelButton(exitButton, title: "Exit", accent: arcadeDanger)
+        layoutStatusMetrics()
+        questionLabel.frame = CGRect(x: 18, y: 24, width: questionPanel.bounds.width - 36, height: 60)
+        
+        layoutAnswerButtons(for: difficulty == .hard ? 4 : 3)
+    }
+    
+    func layoutAnswerButtons(for optionCount: Int) {
+        guard controlPanel != nil else { return }
+        
+        let buttonWidth: CGFloat = optionCount == 4 ? 74 : 92
+        let buttonHeight: CGFloat = 82
+        let spacing: CGFloat = 12
+        let totalWidth = buttonWidth * CGFloat(optionCount) + spacing * CGFloat(optionCount - 1)
+        let startX = (controlPanel.bounds.width - totalWidth) / 2
+        let buttonY = controlPanel.bounds.height - buttonHeight - 34
+        
+        for (index, button) in answerButtons.enumerated() where index < optionCount {
+            button.frame = CGRect(
+                x: startX + CGFloat(index) * (buttonWidth + spacing),
+                y: buttonY,
+                width: buttonWidth,
+                height: buttonHeight
+            )
         }
     }
     
     func setupLivesDisplay() {
-        // Clear existing lives
-        liveCraftNodes.forEach { $0.removeFromSuperview() }
+        liveCraftNodes.forEach { $0.superview?.removeFromSuperview() }
         liveCraftNodes.removeAll()
         
-        let craftSize: CGFloat = 60
+        let craftSize: CGFloat = 42
         let spacing: CGFloat = 10
+        let startX: CGFloat = 16
+        let yPosition: CGFloat = 46
         
-        // Use simple text labels as fallback that definitely work
         for i in 0..<3 {
-            let lifeView = UIView(frame: CGRect(x: CGFloat(i) * (craftSize + spacing), y: 0, width: craftSize, height: craftSize))
-            lifeView.backgroundColor = UIColor(red: 0.1, green: 0.3, blue: 0.5, alpha: 0.8)
-            lifeView.layer.cornerRadius = 8
-            lifeView.layer.borderWidth = 3
-            lifeView.layer.borderColor = UIColor.cyan.cgColor
+            let cardFrame = CGRect(
+                x: startX + CGFloat(i) * (craftSize + spacing),
+                y: yPosition,
+                width: craftSize,
+                height: craftSize
+            )
+            let lifeView = UIView(frame: cardFrame)
+            applyArcadePanelStyle(
+                to: lifeView,
+                accent: arcadeSignal,
+                fillColors: [arcadePanelSoft, arcadePanel],
+                cornerCut: 12
+            )
             
-            // Add a label showing ship icon
-            let label = UILabel(frame: lifeView.bounds)
-            label.text = "🚀"
-            label.font = UIFont.systemFont(ofSize: 40)
-            label.textAlignment = .center
-            lifeView.addSubview(label)
+            let previewView = SCNView(frame: lifeView.bounds.insetBy(dx: 4, dy: 4))
+            configureAssetPreview(
+                on: previewView,
+                modelName: selectedShipModel,
+                scale: 0.44,
+                cameraZ: 2.6,
+                yRotation: Float.pi / 4,
+                rotationDuration: 9
+            )
+            lifeView.addSubview(previewView)
             
             livesContainer.addSubview(lifeView)
-            
-            // Store as SCNView for compatibility (even though it's not)
-            let dummyView = SCNView(frame: .zero)
-            dummyView.tag = i
-            liveCraftNodes.append(dummyView)
-            
-            // Store reference to actual view for fading
+            previewView.tag = i
+            liveCraftNodes.append(previewView)
             lifeView.tag = 1000 + i
         }
+        
+        updateLivesDisplay()
     }
     
     func generateMathQuestion() -> (question: String, answer: Int, options: [Int]) {
@@ -347,6 +785,8 @@ class GameViewController: UIViewController {
     }
     
     func spawnMeteorWithQuestion() {
+        guard !isEndingSession else { return }
+        
         // Remove old meteor if exists
         meteor?.removeFromParentNode()
         
@@ -360,26 +800,27 @@ class GameViewController: UIViewController {
         
         // Fade out question and buttons
         DispatchQueue.main.async {
+            guard !self.isEndingSession else { return }
             UIView.animate(withDuration: 0.2, animations: {
-                self.questionLabel.alpha = 0
+                self.questionPanel.alpha = 0
                 self.answerButtons.forEach { $0.alpha = 0 }
             }, completion: { _ in
+                guard !self.isEndingSession else { return }
                 // Update question text
                 self.questionLabel.text = question
                 
                 // Show/hide and position buttons based on count
-                let buttonWidth: CGFloat = 85
-                let spacing: CGFloat = 15
-                let visibleButtons = options.count
-                let totalWidth = buttonWidth * CGFloat(visibleButtons) + spacing * CGFloat(visibleButtons - 1)
-                let startX = (self.view.bounds.width - totalWidth) / 2
+                self.layoutAnswerButtons(for: options.count)
                 
                 for (i, button) in self.answerButtons.enumerated() {
                     if i < options.count {
-                        button.frame.origin.x = startX + CGFloat(i) * (buttonWidth + spacing)
                         button.setTitle("\(options[i])", for: .normal)
                         button.isEnabled = true
-                        button.backgroundColor = UIColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1.0)
+                        self.styleAnswerButton(
+                            button,
+                            accent: self.arcadeCool,
+                            fillColors: [self.arcadeCool.withAlphaComponent(0.42), self.arcadePanelSoft]
+                        )
                         button.isHidden = false
                     } else {
                         button.isHidden = true
@@ -388,7 +829,7 @@ class GameViewController: UIViewController {
                 
                 // Fade in new question and buttons
                 UIView.animate(withDuration: 0.3, delay: 0.1, options: .curveEaseOut, animations: {
-                    self.questionLabel.alpha = 1.0
+                    self.questionPanel.alpha = 1.0
                     self.answerButtons.forEach { button in
                         if !button.isHidden {
                             button.alpha = 1.0
@@ -439,7 +880,7 @@ class GameViewController: UIViewController {
         meteor?.runAction(rotateAction)
         meteor?.runAction(moveAction) {
             // If meteor reaches ship (wasn't answered in time)
-            if self.meteor?.parent != nil {
+            if !self.isEndingSession, self.meteor?.parent != nil {
                 print("⏰ Meteor timeout - hitting ship")
                 self.handleMeteorTimeout()
             }
@@ -452,6 +893,7 @@ class GameViewController: UIViewController {
     }
     
     @objc func answerTapped(_ sender: UIButton) {
+        guard !isEndingSession else { return }
         guard let answerText = sender.title(for: .normal), let selectedAnswer = Int(answerText) else { return }
         
         if selectedAnswer == currentAnswer {
@@ -466,7 +908,7 @@ class GameViewController: UIViewController {
             if attemptsLeft == maxAttempts {
                 firstAttemptCorrect += 1
                 // Track this specific problem as perfect (format: "3×4")
-                let problemKey = currentQuestionText.replacingOccurrences(of: " = ?", with: "").replacingOccurrences(of: " ", with: "")
+                let problemKey = normalizedProblemKey(from: currentQuestionText)
                 perfectProblems[problemKey, default: 0] += 1
             } else {
                 secondAttemptCorrect += 1
@@ -475,24 +917,33 @@ class GameViewController: UIViewController {
             updateStreakDisplay()
             
             shootLaser()
-            sender.backgroundColor = .green
+            styleAnswerButton(
+                sender,
+                accent: arcadeSuccess,
+                fillColors: [arcadeSuccess, arcadeSignal]
+            )
             
             // Disable all buttons briefly and fade them
             answerButtons.forEach { $0.isEnabled = false }
             
-            // Flash green then fade out before next question
-            UIView.animate(withDuration: 0.3, delay: 0.5, animations: {
-                sender.backgroundColor = UIColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1.0)
-            })
-            
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                self.spawnMeteorWithQuestion()
+                guard !self.isEndingSession else { return }
+                if self.hasMasteredReplayProblemSet() {
+                    self.completeReplaySession()
+                } else {
+                    self.spawnMeteorWithQuestion()
+                }
             }
         } else {
             // Wrong answer
-            sender.backgroundColor = .red
+            styleAnswerButton(
+                sender,
+                accent: arcadeDanger,
+                fillColors: [arcadeDanger, arcadeSignal.withAlphaComponent(0.58)]
+            )
             sender.isEnabled = false
             attemptsLeft -= 1
+            updateMissionLabels()
             
             if attemptsLeft <= 0 {
                 // Track missed question
@@ -506,29 +957,35 @@ class GameViewController: UIViewController {
     func shootLaser() {
         // Play laser sound
         AudioManager.shared.playLaserFire()
-        
-        // Create short laser burst that travels from ship to meteor
-        let laser = SCNNode(geometry: SCNCylinder(radius: 0.12, height: 3.0))
+
+        let shipPosition = spaceship.presentation.position
+        let startPosition = SCNVector3(x: shipPosition.x, y: shipPosition.y + 0.08, z: shipPosition.z - 1.6)
+        let targetPosition = meteor?.presentation.position ?? meteor?.position ?? SCNVector3(x: currentPosition, y: -1, z: -18)
+        let beamLength = max(distance(from: startPosition, to: targetPosition), 0.6)
+
+        // Create a beam that spans from the ship to the meteor's live position
+        let laser = SCNNode(geometry: SCNBox(width: 0.14, height: 0.14, length: beamLength, chamferRadius: 0.05))
         laser.geometry?.firstMaterial?.diffuse.contents = UIColor.cyan
         laser.geometry?.firstMaterial?.emission.contents = UIColor.cyan
         laser.geometry?.firstMaterial?.transparency = 0.9
-        
-        // Start at ship position, offset forward slightly
-        laser.position = SCNVector3(x: currentPosition, y: -1, z: -1.5)
-        laser.eulerAngles = SCNVector3(x: Float.pi / 2, y: 0, z: 0)
+        laser.geometry?.firstMaterial?.lightingModel = .constant
+
+        laser.position = midpoint(from: startPosition, to: targetPosition)
+        laser.look(at: targetPosition)
+        laser.opacity = 0.0
         gameScene.rootNode.addChildNode(laser)
-        
-        // Calculate meteor position - aim for center of meteor
-        let meteorZ = meteor?.position.z ?? -30
-        let targetZ = meteorZ  // Aim for center of meteor
-        
-        // Fast travel to meteor
-        let travelDuration = 0.18
-        let moveAction = SCNAction.move(to: SCNVector3(x: currentPosition, y: -1, z: targetZ), duration: travelDuration)
-        moveAction.timingMode = .linear
-        let fadeOut = SCNAction.fadeOut(duration: travelDuration * 0.6)
-        
-        let group = SCNAction.group([moveAction, fadeOut])
+
+        let flashIn = SCNAction.fadeIn(duration: 0.03)
+        let flashOut = SCNAction.fadeOut(duration: 0.12)
+        let pulse = SCNAction.scale(to: 1.08, duration: 0.06)
+        pulse.timingMode = .easeOut
+        let settle = SCNAction.scale(to: 1.0, duration: 0.06)
+        settle.timingMode = .easeIn
+
+        let group = SCNAction.group([
+            SCNAction.sequence([flashIn, flashOut]),
+            SCNAction.sequence([pulse, settle])
+        ])
         laser.runAction(group) {
             laser.removeFromParentNode()
             self.explodeMeteor()
@@ -574,6 +1031,8 @@ class GameViewController: UIViewController {
     }
     
     func handleMeteorTimeout() {
+        guard !isEndingSession else { return }
+        
         // Meteor reached ship because player didn't answer in time
         guard let meteor = meteor, meteor.parent != nil else {
             print("⛔ Meteor already gone")
@@ -613,9 +1072,6 @@ class GameViewController: UIViewController {
             print("✅ Continuing with \(lives) lives")
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                 self.spawnMeteorWithQuestion()
-                self.answerButtons.forEach {
-                    $0.backgroundColor = UIColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1.0)
-                }
             }
         } else {
             // No lives left - show game over after explosion
@@ -627,6 +1083,8 @@ class GameViewController: UIViewController {
     }
     
     func meteorHitsShip() {
+        guard !isEndingSession else { return }
+        
         // Player selected wrong answer twice
         guard let meteor = meteor else {
             print("⛔ meteorHitsShip called but meteor is nil")
@@ -790,280 +1248,454 @@ class GameViewController: UIViewController {
     }
     
     func updateLivesDisplay() {
-        // Ensure on main thread for UI updates
         DispatchQueue.main.async {
-            // Remove lives from right to left
-            // Index 0 = leftmost, Index 2 = rightmost
+            let clampedLives = max(0, self.lives)
+            self.hullStatusLabel.text = "SHIPS"
+            self.hullStatusLabel.textColor = clampedLives > 1
+                ? self.arcadeSignalBright
+                : (clampedLives == 1 ? self.arcadeWarning : self.arcadeDanger)
+            
             for index in 0..<3 {
-                if let lifeView = self.livesContainer.viewWithTag(1000 + index) {
-                    let isVisible = index < self.lives
-                    lifeView.alpha = isVisible ? 1.0 : 0.3
-                    print("Life icon \(index): \(isVisible ? "visible" : "faded")")
+                guard let lifeView = self.livesContainer.viewWithTag(1000 + index) else { continue }
+                let isActive = index < clampedLives
+                self.applyArcadePanelStyle(
+                    to: lifeView,
+                    accent: isActive ? self.arcadeSignal : self.arcadeDanger,
+                    fillColors: isActive
+                        ? [self.arcadePanelSoft, self.arcadePanel]
+                        : [self.arcadePanel, UIColor.black.withAlphaComponent(0.88)],
+                    cornerCut: 12
+                )
+                UIView.animate(withDuration: 0.25) {
+                    lifeView.alpha = isActive ? 1.0 : 0.24
+                    lifeView.transform = isActive ? .identity : CGAffineTransform(scaleX: 0.92, y: 0.92)
                 }
             }
         }
     }
     
-    
-        func updateStreakDisplay() {
-            DispatchQueue.main.async {
-                self.streakLabel.text = "Streak: \(self.currentStreak)\nTop: \(self.topScore)"
+    func updateStreakDisplay() {
+        DispatchQueue.main.async {
+            self.applyMetricValue(self.currentStreak, to: self.streakLabel, accent: self.arcadeSignalBright)
+            self.applyMetricValue(self.totalMeteorsDestroyed, to: self.answersRightLabel, accent: self.arcadeCool)
         }
     }
     
     func showGameOver() {
-        // Ensure we're on main thread for UI updates
+        guard !isEndingSession else { return }
+        
         DispatchQueue.main.async {
-            print("🎮 Showing game over screen")
-            self.questionLabel.isHidden = true
+            guard !self.isEndingSession else { return }
+            self.questionPanel.isHidden = true
+            self.controlPanel.isHidden = true
+            self.livesContainer.isHidden = true
+            self.streakLabel.superview?.isHidden = true
             self.answerButtons.forEach { $0.isHidden = true }
             self.spaceship.isHidden = true
-            self.streakLabel.isHidden = true
-            
-            // Add spinning meteor decoration
+            self.meteor?.removeFromParentNode()
             self.addSpinningMeteorDecoration()
             
-            // GAME OVER title
-            let gameOverLabel = UILabel(frame: CGRect(x: 0, y: 80, width: self.view.bounds.width, height: 60))
-            gameOverLabel.text = "GAME OVER"
-            gameOverLabel.font = UIFont(name: "Orbitron-Bold", size: 42) ?? UIFont.boldSystemFont(ofSize: 42)
-            gameOverLabel.textColor = .red
-            gameOverLabel.textAlignment = .center
-            gameOverLabel.layer.shadowColor = UIColor.red.cgColor
-            gameOverLabel.layer.shadowRadius = 15
-            gameOverLabel.layer.shadowOpacity = 1.0
-            gameOverLabel.layer.shadowOffset = .zero
-            self.view.addSubview(gameOverLabel)
+            self.gameOverOverlay?.removeFromSuperview()
+            let overlay = UIView(frame: self.view.bounds)
+            overlay.backgroundColor = UIColor(red: 0.01, green: 0.02, blue: 0.06, alpha: 0.88)
+            self.view.addSubview(overlay)
+            self.gameOverOverlay = overlay
             
-            // Pulsing animation
-            let pulse = CABasicAnimation(keyPath: "transform.scale")
-            pulse.fromValue = 1.0
-            pulse.toValue = 1.08
-            pulse.duration = 0.8
-            pulse.autoreverses = true
-            pulse.repeatCount = .infinity
-            gameOverLabel.layer.add(pulse, forKey: "pulse")
+            let backdrop = CAGradientLayer()
+            backdrop.name = "arcade.backdrop"
+            backdrop.frame = overlay.bounds
+            backdrop.colors = [
+                UIColor.black.withAlphaComponent(0.16).cgColor,
+                self.arcadeSpaceTop.withAlphaComponent(0.94).cgColor,
+                UIColor(red: 0.02, green: 0.03, blue: 0.08, alpha: 0.98).cgColor
+            ]
+            backdrop.startPoint = CGPoint(x: 0.5, y: 0.0)
+            backdrop.endPoint = CGPoint(x: 0.5, y: 1.0)
+            overlay.layer.insertSublayer(backdrop, at: 0)
             
-            // Stats container
-            let statsPanel = UIView(frame: CGRect(x: 20, y: 160, width: self.view.bounds.width - 40, height: 360))
-            statsPanel.backgroundColor = UIColor.black.withAlphaComponent(0.85)
-            statsPanel.layer.cornerRadius = 20
-            statsPanel.layer.borderWidth = 4
-            statsPanel.layer.borderColor = UIColor.cyan.cgColor
-            statsPanel.layer.shadowColor = UIColor.cyan.cgColor
-            statsPanel.layer.shadowRadius = 15
-            statsPanel.layer.shadowOpacity = 0.8
-            statsPanel.layer.shadowOffset = .zero
-            self.view.addSubview(statsPanel)
+            let topInset = max(self.view.safeAreaInsets.top, 20)
+            let bottomInset = max(self.view.safeAreaInsets.bottom, 20)
+            let missedTargets = Array(self.prioritizedMissedProblems().prefix(6))
+            let hasReplay = !missedTargets.isEmpty
+            let panelWidth = min(overlay.bounds.width - 36, 420)
+            let summaryHeight: CGFloat = 214
+            let missedPanelHeight: CGFloat = hasReplay ? 148 : 0
+            let reservedButtonHeight: CGFloat = hasReplay ? 124 : 60
+            let contentHeight = summaryHeight + (hasReplay ? missedPanelHeight + 14 : 0) + 18 + reservedButtonHeight
+            let panelX = (overlay.bounds.width - panelWidth) / 2
+            let panelY = max(topInset + 26, (overlay.bounds.height - bottomInset - contentHeight) / 2)
             
-            var yPos: CGFloat = 20
+            let summaryPanel = UIView(frame: CGRect(x: panelX, y: panelY, width: panelWidth, height: summaryHeight))
+            self.applyArcadePanelStyle(
+                to: summaryPanel,
+                accent: self.arcadeDanger,
+                fillColors: [self.arcadePanelSoft, self.arcadePanel],
+                cornerCut: 20
+            )
+            overlay.addSubview(summaryPanel)
             
-            // Score header
-            let scoreHeader = UILabel(frame: CGRect(x: 20, y: yPos, width: statsPanel.bounds.width - 40, height: 30))
-            scoreHeader.text = "== MISSION STATS =="
-            scoreHeader.font = UIFont(name: "Orbitron-Bold", size: 20) ?? UIFont.boldSystemFont(ofSize: 20)
-            scoreHeader.textColor = .cyan
-            scoreHeader.textAlignment = .center
-            statsPanel.addSubview(scoreHeader)
-            yPos += 40
+            let debriefLabel = UILabel(frame: CGRect(x: 18, y: 18, width: summaryPanel.bounds.width - 36, height: 14))
+            debriefLabel.text = "MISSION DEBRIEF"
+            debriefLabel.font = UIFont.exo2SemiBold(size: 11)
+            debriefLabel.textColor = self.arcadeSignalBright
+            debriefLabel.textAlignment = .center
+            summaryPanel.addSubview(debriefLabel)
+            self.addArcadeBlinkAnimation(to: debriefLabel, minimumOpacity: 0.46, duration: 0.9)
             
-            // Meteors Destroyed - BIG NUMBER
-            let destroyedValue = UILabel(frame: CGRect(x: 20, y: yPos, width: statsPanel.bounds.width - 40, height: 45))
+            let heroTitle = UILabel(frame: CGRect(x: 18, y: 38, width: summaryPanel.bounds.width - 36, height: 34))
+            heroTitle.text = "GAME OVER"
+            heroTitle.font = UIFont.orbitronBold(size: 34)
+            heroTitle.textColor = .white
+            heroTitle.textAlignment = .center
+            heroTitle.adjustsFontSizeToFitWidth = true
+            summaryPanel.addSubview(heroTitle)
+            
+            let destroyedValue = UILabel(frame: CGRect(x: 18, y: 78, width: summaryPanel.bounds.width - 36, height: 52))
             destroyedValue.text = "\(self.totalMeteorsDestroyed)"
-            destroyedValue.font = UIFont(name: "Orbitron-Bold", size: 54) ?? UIFont.boldSystemFont(ofSize: 54)
-            destroyedValue.textColor = .yellow
+            destroyedValue.font = UIFont.orbitronBold(size: 52)
+            destroyedValue.textColor = self.arcadeSignalBright
             destroyedValue.textAlignment = .center
-            destroyedValue.layer.shadowColor = UIColor.yellow.cgColor
-            destroyedValue.layer.shadowRadius = 10
-            destroyedValue.layer.shadowOpacity = 0.8
-            destroyedValue.layer.shadowOffset = .zero
-            statsPanel.addSubview(destroyedValue)
-            yPos += 50
+            destroyedValue.adjustsFontSizeToFitWidth = true
+            destroyedValue.minimumScaleFactor = 0.7
+            summaryPanel.addSubview(destroyedValue)
             
-            let destroyedLabel = UILabel(frame: CGRect(x: 20, y: yPos, width: statsPanel.bounds.width - 40, height: 20))
-            destroyedLabel.text = "METEORS DESTROYED"
-            destroyedLabel.font = UIFont(name: "Exo 2 Bold", size: 14) ?? UIFont.boldSystemFont(ofSize: 14)
-            destroyedLabel.textColor = .white
+            let destroyedLabel = UILabel(frame: CGRect(x: 18, y: 132, width: summaryPanel.bounds.width - 36, height: 18))
+            destroyedLabel.text = "TOTAL CLEARED"
+            destroyedLabel.font = UIFont.exo2SemiBold(size: 13)
+            destroyedLabel.textColor = UIColor.white.withAlphaComponent(0.82)
             destroyedLabel.textAlignment = .center
-            statsPanel.addSubview(destroyedLabel)
-            yPos += 30
+            summaryPanel.addSubview(destroyedLabel)
             
-            // Accuracy stats
-            let accuracyStack = UIStackView(frame: CGRect(x: 25, y: yPos, width: statsPanel.bounds.width - 50, height: 60))
-            accuracyStack.axis = .horizontal
-            accuracyStack.distribution = .fillEqually
-            accuracyStack.spacing = 10
+            let statCardWidth = (summaryPanel.bounds.width - 46) / 2
+            let perfectCard = self.createSummaryStatCard(
+                frame: CGRect(x: 18, y: 162, width: statCardWidth, height: 34),
+                title: "PERFECT",
+                value: "\(self.firstAttemptCorrect)",
+                accent: self.arcadeSuccess
+            )
+            summaryPanel.addSubview(perfectCard)
             
-            let perfectContainer = self.createStatBox(value: "\(self.firstAttemptCorrect)", label: "PERFECT", color: .green)
-            accuracyStack.addArrangedSubview(perfectContainer)
+            let missedCard = self.createSummaryStatCard(
+                frame: CGRect(x: perfectCard.frame.maxX + 10, y: 162, width: statCardWidth, height: 34),
+                title: "MISSED",
+                value: "\(self.missedQuestions.count)",
+                accent: self.arcadeDanger
+            )
+            summaryPanel.addSubview(missedCard)
             
-            if self.secondAttemptCorrect > 0 {
-                let okContainer = self.createStatBox(value: "\(self.secondAttemptCorrect)", label: "RETRY", color: .yellow)
-                accuracyStack.addArrangedSubview(okContainer)
-            }
-            
-            let missedCount = self.missedQuestions.count
-            let missedContainer = self.createStatBox(value: "\(missedCount)", label: "MISSED", color: .red)
-            accuracyStack.addArrangedSubview(missedContainer)
-            
-            statsPanel.addSubview(accuracyStack)
-            yPos += 70
-            
-            // Missed questions list
-            if !self.missedQuestions.isEmpty {
-                let missedHeader = UILabel(frame: CGRect(x: 20, y: yPos, width: statsPanel.bounds.width - 40, height: 25))
-                missedHeader.text = "📝 PRACTICE THESE:"
-                missedHeader.font = UIFont(name: "Exo 2 Bold", size: 14) ?? UIFont.boldSystemFont(ofSize: 14)
-                missedHeader.textColor = .orange
+            var lastPanelMaxY = summaryPanel.frame.maxY
+            if hasReplay {
+                let missedPanel = UIView(
+                    frame: CGRect(
+                        x: panelX,
+                        y: summaryPanel.frame.maxY + 14,
+                        width: panelWidth,
+                        height: missedPanelHeight
+                    )
+                )
+                self.applyArcadePanelStyle(
+                    to: missedPanel,
+                    accent: self.arcadeWarning,
+                    fillColors: [self.arcadePanelSoft, self.arcadePanel],
+                    cornerCut: 18
+                )
+                overlay.addSubview(missedPanel)
+                
+                let missedHeader = UILabel(frame: CGRect(x: 18, y: 16, width: missedPanel.bounds.width - 36, height: 18))
+                missedHeader.text = "TRY THESE"
+                missedHeader.font = UIFont.exo2SemiBold(size: 12)
+                missedHeader.textColor = self.arcadeWarning
                 missedHeader.textAlignment = .center
-                statsPanel.addSubview(missedHeader)
-                yPos += 28
+                missedPanel.addSubview(missedHeader)
+                self.addArcadeBlinkAnimation(to: missedHeader, minimumOpacity: 0.32, duration: 0.62)
                 
-                // Show up to 4 missed questions in columns
-                let maxDisplay = min(4, self.missedQuestions.count)
-                let columns = 2
-                for i in 0..<maxDisplay {
-                    let col = i % columns
-                    let row = i / columns
-                    let questionLabel = UILabel(frame: CGRect(
-                        x: 30 + CGFloat(col) * (statsPanel.bounds.width - 60) / 2,
-                        y: yPos + CGFloat(row) * 20,
-                        width: (statsPanel.bounds.width - 60) / 2 - 10,
-                        height: 18
-                    ))
-                    questionLabel.text = self.missedQuestions[i]
-                    questionLabel.font = UIFont(name: "Exo 2 SemiBold", size: 13) ?? UIFont.systemFont(ofSize: 13)
-                    questionLabel.textColor = .white
-                    questionLabel.textAlignment = .center
-                    questionLabel.backgroundColor = UIColor.red.withAlphaComponent(0.2)
-                    questionLabel.layer.cornerRadius = 4
-                    questionLabel.layer.masksToBounds = true
-                    statsPanel.addSubview(questionLabel)
+                let chipWidth = (missedPanel.bounds.width - 48 - 10) / 2
+                let chipHeight: CGFloat = 34
+                for (index, item) in missedTargets.enumerated() {
+                    let row = index / 2
+                    let column = index % 2
+                    let chip = self.createMissedTargetChip(
+                        frame: CGRect(
+                            x: 18 + CGFloat(column) * (chipWidth + 10),
+                            y: 44 + CGFloat(row) * (chipHeight + 10),
+                            width: chipWidth,
+                            height: chipHeight
+                        ),
+                        problem: item.problem,
+                        count: item.count
+                    )
+                    missedPanel.addSubview(chip)
                 }
-            }
-            
-            // Buttons container
-            let buttonY = statsPanel.frame.maxY + 20
-            
-            // Play Again button (if there are missed questions)
-            if !self.missedQuestions.isEmpty {
-                let playAgainButton = UIButton(frame: CGRect(x: 30, y: buttonY, width: self.view.bounds.width - 60, height: 55))
-                playAgainButton.setTitle("🔁 PRACTICE MISSED", for: .normal)
-                playAgainButton.titleLabel?.font = UIFont(name: "Orbitron-Bold", size: 22) ?? UIFont.boldSystemFont(ofSize: 22)
-                playAgainButton.backgroundColor = UIColor(red: 0.2, green: 0.6, blue: 0.3, alpha: 1.0)
-                playAgainButton.setTitleColor(.white, for: .normal)
-                playAgainButton.layer.cornerRadius = 12
-                playAgainButton.layer.borderWidth = 3
-                playAgainButton.layer.borderColor = UIColor.green.cgColor
-                playAgainButton.layer.shadowColor = UIColor.green.cgColor
-                playAgainButton.layer.shadowRadius = 10
-                playAgainButton.layer.shadowOpacity = 0.8
-                playAgainButton.layer.shadowOffset = .zero
-                playAgainButton.addTarget(self, action: #selector(self.playAgainWithMissed), for: .touchUpInside)
-                self.view.addSubview(playAgainButton)
                 
-                // Menu button below
-                let menuButton = UIButton(frame: CGRect(x: self.view.bounds.width/2 - 110, y: buttonY + 65, width: 220, height: 50))
-                menuButton.setTitle("← MAIN MENU", for: .normal)
-                menuButton.titleLabel?.font = UIFont(name: "Orbitron-Bold", size: 20) ?? UIFont.boldSystemFont(ofSize: 20)
-                menuButton.backgroundColor = UIColor(white: 0.3, alpha: 1.0)
-                menuButton.setTitleColor(.white, for: .normal)
-                menuButton.layer.cornerRadius = 10
-                menuButton.addTarget(self, action: #selector(self.backToMenu), for: .touchUpInside)
-                self.view.addSubview(menuButton)
-            } else {
-                // Just menu button if no missed questions
-                let menuButton = UIButton(frame: CGRect(x: self.view.bounds.width/2 - 110, y: buttonY, width: 220, height: 55))
-                menuButton.setTitle("← MAIN MENU", for: .normal)
-                menuButton.titleLabel?.font = UIFont(name: "Orbitron-Bold", size: 24) ?? UIFont.boldSystemFont(ofSize: 24)
-                menuButton.backgroundColor = UIColor(red: 0.8, green: 0.2, blue: 0.2, alpha: 1.0)
-                menuButton.setTitleColor(.white, for: .normal)
-                menuButton.layer.cornerRadius = 12
-                menuButton.layer.borderWidth = 3
-                menuButton.layer.borderColor = UIColor.orange.cgColor
-                menuButton.layer.shadowColor = UIColor.orange.cgColor
-                menuButton.layer.shadowRadius = 10
-                menuButton.layer.shadowOpacity = 0.8
-                menuButton.layer.shadowOffset = .zero
-                menuButton.addTarget(self, action: #selector(self.backToMenu), for: .touchUpInside)
-                self.view.addSubview(menuButton)
+                lastPanelMaxY = missedPanel.frame.maxY
             }
             
-            print("✅ Game over UI created")
+            let primaryButtonY = min(
+                lastPanelMaxY + 18,
+                overlay.bounds.height - bottomInset - reservedButtonHeight
+            )
+            if hasReplay {
+                let replayButton = self.createActionButton(
+                    frame: CGRect(x: panelX, y: primaryButtonY, width: panelWidth, height: 60),
+                    title: "Try Missed",
+                    subtitle: nil,
+                    accent: self.arcadeSuccess,
+                    fillColors: [self.arcadeSuccess, self.arcadeSignal],
+                    action: #selector(self.playAgainWithMissed)
+                )
+                overlay.addSubview(replayButton)
+                self.addArcadePulseAnimation(to: replayButton, scale: 1.025, duration: 0.78)
+                
+                let menuButton = self.createActionButton(
+                    frame: CGRect(x: panelX, y: replayButton.frame.maxY + 12, width: panelWidth, height: 52),
+                    title: "Menu",
+                    subtitle: nil,
+                    accent: self.arcadeCool,
+                    fillColors: [self.arcadePanelSoft, self.arcadePanel],
+                    action: #selector(self.backToMenu)
+                )
+                overlay.addSubview(menuButton)
+            } else {
+                let menuButton = self.createActionButton(
+                    frame: CGRect(x: panelX, y: primaryButtonY, width: panelWidth, height: 60),
+                    title: "Menu",
+                    subtitle: nil,
+                    accent: self.arcadeSignal,
+                    fillColors: [self.arcadeSignalBright, self.arcadeSignal, self.arcadeSignal.withAlphaComponent(0.82)],
+                    action: #selector(self.backToMenu)
+                )
+                overlay.addSubview(menuButton)
+                self.addArcadePulseAnimation(to: menuButton, scale: 1.02, duration: 0.88)
+            }
         }
     }
     
-    func createStatBox(value: String, label: String, color: UIColor) -> UIView {
-        let container = UIView()
+    func createMissedTargetChip(frame: CGRect, problem: String, count: Int) -> UIView {
+        let chip = UIView(frame: frame)
+        let accent = count > 1 ? arcadeDanger : arcadeWarning
+        applyArcadePanelStyle(
+            to: chip,
+            accent: accent,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 12
+        )
         
-        let valueLabel = UILabel()
+        let titleLabel = UILabel(frame: CGRect(x: 12, y: 7, width: chip.bounds.width - 60, height: 20))
+        titleLabel.text = problem
+        titleLabel.font = UIFont.orbitronBold(size: 17)
+        titleLabel.textColor = .white
+        titleLabel.adjustsFontSizeToFitWidth = true
+        titleLabel.minimumScaleFactor = 0.75
+        chip.addSubview(titleLabel)
+        
+        let countLabel = UILabel(frame: CGRect(x: chip.bounds.width - 50, y: 8, width: 38, height: 18))
+        countLabel.text = "×\(count)"
+        countLabel.font = UIFont.exo2SemiBold(size: 10)
+        countLabel.textColor = accent
+        countLabel.textAlignment = .center
+        countLabel.backgroundColor = UIColor.black.withAlphaComponent(0.18)
+        countLabel.layer.cornerRadius = 9
+        countLabel.layer.masksToBounds = true
+        chip.addSubview(countLabel)
+        
+        return chip
+    }
+    
+    func createSummaryStatCard(frame: CGRect, title: String, value: String, accent: UIColor) -> UIView {
+        let card = UIView(frame: frame)
+        applyArcadePanelStyle(
+            to: card,
+            accent: accent,
+            fillColors: [arcadePanelSoft, arcadePanel],
+            cornerCut: 12
+        )
+        
+        let titleLabel = UILabel(frame: CGRect(x: 10, y: 8, width: card.bounds.width - 54, height: 16))
+        titleLabel.text = title
+        titleLabel.font = UIFont.exo2SemiBold(size: 10)
+        titleLabel.textColor = UIColor.white.withAlphaComponent(0.76)
+        titleLabel.adjustsFontSizeToFitWidth = true
+        titleLabel.minimumScaleFactor = 0.75
+        card.addSubview(titleLabel)
+        
+        let valueLabel = UILabel(frame: CGRect(x: card.bounds.width - 48, y: 4, width: 38, height: 24))
         valueLabel.text = value
-        valueLabel.font = UIFont(name:"Orbitron-Bold", size: 32)
-        valueLabel.textColor = color
-        valueLabel.textAlignment = .center
-        valueLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(valueLabel)
+        valueLabel.font = UIFont.orbitronBold(size: 18)
+        valueLabel.textColor = accent
+        valueLabel.textAlignment = .right
+        valueLabel.adjustsFontSizeToFitWidth = true
+        valueLabel.minimumScaleFactor = 0.7
+        card.addSubview(valueLabel)
         
-        let textLabel = UILabel()
-        textLabel.text = label
-        textLabel.font = UIFont(name:"Exo 2 SemiBold", size: 11)
-        textLabel.textColor = .white
-        textLabel.textAlignment = .center
-        textLabel.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(textLabel)
+        return card
+    }
+    
+    func hasMasteredReplayProblemSet() -> Bool {
+        guard isReplaySession else { return false }
         
-        NSLayoutConstraint.activate([
-            valueLabel.topAnchor.constraint(equalTo: container.topAnchor),
-            valueLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor),
-            textLabel.topAnchor.constraint(equalTo: valueLabel.bottomAnchor, constant: 2),
-            textLabel.centerXAnchor.constraint(equalTo: container.centerXAnchor)
-        ])
+        let targetProblems = Set(customProblems.map { normalizedProblemKey(from: $0) })
+        guard !targetProblems.isEmpty else { return false }
         
-        return container
+        return targetProblems.allSatisfy { target in
+            (perfectProblems[target] ?? 0) >= replayMasteryThreshold
+        }
+    }
+    
+    func completeReplaySession() {
+        guard !didCompleteReplaySession else { return }
+        didCompleteReplaySession = true
+        isEndingSession = true
+        
+        meteor?.removeAllActions()
+        meteor?.removeFromParentNode()
+        questionLabel.text = "CLEAR!"
+        answerButtons.forEach { $0.isEnabled = false }
+        
+        UIView.animate(withDuration: 0.25) {
+            self.answerButtons.forEach { $0.alpha = 0.0 }
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+            self.gameOverCallback?(self.totalMeteorsDestroyed, self.firstAttemptCorrect, self.perfectProblems)
+        }
+    }
+    
+    func addArcadeBlinkAnimation(to view: UIView, minimumOpacity: Float = 0.4, duration: CFTimeInterval = 0.7) {
+        view.layer.removeAnimation(forKey: "arcade.blink")
+        
+        let animation = CABasicAnimation(keyPath: "opacity")
+        animation.fromValue = 1.0
+        animation.toValue = minimumOpacity
+        animation.duration = duration
+        animation.autoreverses = true
+        animation.repeatCount = .infinity
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        view.layer.add(animation, forKey: "arcade.blink")
+    }
+    
+    func addArcadePulseAnimation(to view: UIView, scale: CGFloat = 1.03, duration: CFTimeInterval = 0.85) {
+        view.layer.removeAnimation(forKey: "arcade.pulse")
+        
+        let animation = CABasicAnimation(keyPath: "transform.scale")
+        animation.fromValue = 1.0
+        animation.toValue = scale
+        animation.duration = duration
+        animation.autoreverses = true
+        animation.repeatCount = .infinity
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        view.layer.add(animation, forKey: "arcade.pulse")
+    }
+    
+    func createActionButton(
+        frame: CGRect,
+        title: String,
+        subtitle: String?,
+        accent: UIColor,
+        fillColors: [UIColor],
+        action: Selector
+    ) -> UIButton {
+        let button = UIButton(frame: frame)
+        applyArcadePanelStyle(
+            to: button,
+            accent: accent,
+            fillColors: fillColors,
+            cornerCut: 16
+        )
+        button.addTarget(self, action: action, for: .touchUpInside)
+        
+        let titleY: CGFloat = subtitle == nil ? 16 : 10
+        let titleLabel = UILabel(frame: CGRect(x: 16, y: titleY, width: button.bounds.width - 32, height: 24))
+        titleLabel.text = title.uppercased()
+        titleLabel.font = UIFont.orbitronBold(size: subtitle == nil ? 18 : 20)
+        titleLabel.textColor = .white
+        titleLabel.textAlignment = .center
+        titleLabel.adjustsFontSizeToFitWidth = true
+        titleLabel.minimumScaleFactor = 0.7
+        titleLabel.isUserInteractionEnabled = false
+        button.addSubview(titleLabel)
+        
+        if let subtitle {
+            let subtitleLabel = UILabel(frame: CGRect(x: 16, y: frame.height - 28, width: button.bounds.width - 32, height: 14))
+            subtitleLabel.text = subtitle
+            subtitleLabel.font = UIFont.exo2SemiBold(size: 11)
+            subtitleLabel.textColor = UIColor.white.withAlphaComponent(0.82)
+            subtitleLabel.textAlignment = .center
+            subtitleLabel.adjustsFontSizeToFitWidth = true
+            subtitleLabel.minimumScaleFactor = 0.7
+            subtitleLabel.isUserInteractionEnabled = false
+            button.addSubview(subtitleLabel)
+        }
+        
+        return button
+    }
+    
+    func prioritizedMissedProblems() -> [(problem: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for question in missedQuestions {
+            let normalized = normalizedProblemKey(from: question)
+            counts[normalized, default: 0] += 1
+        }
+        
+        return counts
+            .map { (problem: $0.key, count: $0.value) }
+            .sorted {
+                if $0.count == $1.count {
+                    return $0.problem < $1.problem
+                }
+                return $0.count > $1.count
+            }
+    }
+    
+    func normalizedProblemKey(from question: String) -> String {
+        question
+            .replacingOccurrences(of: " = ?", with: "")
+            .replacingOccurrences(of: " ", with: "")
     }
     
     func addSpinningMeteorDecoration() {
-        // Add a spinning meteor as decoration on game over screen
+        gameScene.rootNode.childNodes
+            .filter { $0.name == "gameOverDecorMeteor" }
+            .forEach { $0.removeFromParentNode() }
+        
         guard let meteorScene = SCNScene(named: "art.scnassets/meteor_detailed.dae") else { return }
         
         let decorMeteor = SCNNode()
+        decorMeteor.name = "gameOverDecorMeteor"
         for child in meteorScene.rootNode.childNodes {
             decorMeteor.addChildNode(child)
         }
         
-        decorMeteor.scale = SCNVector3(x: 1.2, y: 1.2, z: 1.2)
-        decorMeteor.position = SCNVector3(x: 0, y: 0, z: -15)
+        decorMeteor.scale = SCNVector3(x: 1.1, y: 1.1, z: 1.1)
+        decorMeteor.position = SCNVector3(x: 4.5, y: 2.4, z: -18)
         gameScene.rootNode.addChildNode(decorMeteor)
         
-        // Spin continuously
-        let rotateAction = SCNAction.repeatForever(SCNAction.rotateBy(x: 0.5, y: 1.5, z: 0.3, duration: 2.0))
+        let rotateAction = SCNAction.repeatForever(SCNAction.rotateBy(x: 0.4, y: 1.3, z: 0.2, duration: 2.3))
         decorMeteor.runAction(rotateAction)
     }
     
     @objc func playAgainWithMissed() {
-        print("🔁 Playing again with missed questions")
-        // Extract just the problem part (e.g., "3×4" from "3 × 4 = ?")
-        let missedProblems = missedQuestions.map { question in
-            question.replacingOccurrences(of: " = ?", with: "").replacingOccurrences(of: " ", with: "")
-        }
+        guard !isEndingSession else { return }
+        isEndingSession = true
+        let missedProblems = missedQuestions.map { normalizedProblemKey(from: $0) }
         playAgainCallback?(missedProblems)
     }
     
     @objc func backToMenu() {
-        print("🔙 Returning to main menu")
-        
-        // Trigger unlock check callback before dismissing
-        // Pass the dictionary of perfect problems with counts
+        guard !isEndingSession else { return }
+        isEndingSession = true
         gameOverCallback?(totalMeteorsDestroyed, firstAttemptCorrect, perfectProblems)
-        
-        // Dismiss all the way back to root (main menu)
-        // GameVC was presented by ShipSelectionVC, which was presented by MenuVC
-        // So we need to dismiss to the root
-        var rootVC = self.presentingViewController
-        while let presenter = rootVC?.presentingViewController {
-            rootVC = presenter
-        }
-        rootVC?.dismiss(animated: true, completion: nil)
+    }
+    
+    @objc func exitGame() {
+        guard !isEndingSession else { return }
+        isEndingSession = true
+        starfieldTimer?.invalidate()
+        starfieldTimer = nil
+        meteor?.removeAllActions()
+        meteor?.removeFromParentNode()
+        answerButtons.forEach { $0.isEnabled = false }
+        AudioManager.shared.stopThruster()
+        exitToMenuCallback?()
     }
     
     func moveShipToPosition(_ x: Float) {
@@ -1087,7 +1719,10 @@ class GameViewController: UIViewController {
     
     func startAnimation() {
         // Animate stars moving towards camera with progressive speed
-        Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { _ in
+        starfieldTimer?.invalidate()
+        starfieldTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            guard !self.isEndingSession else { return }
             for star in self.stars {
                 // Move star towards camera at current speed
                 star.position.z += self.starSpeed

@@ -6,14 +6,14 @@
 //
 
 import SwiftUI
-import SceneKit
 
 struct ShipSelectionView: View {
     let selectedTables: [Int]
-    let selectedDifficulty: Difficulty
     let isCustomMode: Bool
     var selectedProblems: [String] = []
+    let onReturnToMenu: () -> Void
     
+    @Binding var selectedDifficulty: Difficulty
     @State private var selectedShip: SpaceShip
     @State private var showingGame = false
     @Environment(\.dismiss) private var dismiss
@@ -21,89 +21,90 @@ struct ShipSelectionView: View {
     let ships: [SpaceShip] = [
         SpaceShip(name: "Nova Striker", modelName: "craft_speederA.dae", unlockRequirement: "Default", unlockLevel: 0),
         SpaceShip(name: "Photon Blade", modelName: "craft_racer.dae", unlockRequirement: "Complete 2× table", unlockLevel: 1),
-        SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× or 4× table", unlockLevel: 2),
-        SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× or 6× table", unlockLevel: 3),
-        SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× or 8× table", unlockLevel: 4),
-        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 9× or 10× table", unlockLevel: 5),
-        SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× or 12× table", unlockLevel: 6),
-        SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium or Hard mode", unlockLevel: 7)
+        SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× and 4× tables", unlockLevel: 2),
+        SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× and 6× tables", unlockLevel: 3),
+        SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× and 8× tables", unlockLevel: 4),
+        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 9× and 10× tables", unlockLevel: 5),
+        SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× and 12× tables", unlockLevel: 6),
+        SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium and Hard modes", unlockLevel: 7)
     ]
     
-    init(selectedTables: [Int], selectedDifficulty: Difficulty, isCustomMode: Bool, selectedProblems: [String] = []) {
+    init(
+        selectedTables: [Int],
+        selectedDifficulty: Binding<Difficulty>,
+        isCustomMode: Bool,
+        selectedProblems: [String] = [],
+        onReturnToMenu: @escaping () -> Void = {}
+    ) {
         self.selectedTables = selectedTables
-        self.selectedDifficulty = selectedDifficulty
         self.isCustomMode = isCustomMode
         self.selectedProblems = selectedProblems
+        self.onReturnToMenu = onReturnToMenu
+        self._selectedDifficulty = selectedDifficulty
         self._selectedShip = State(initialValue: ships[0])
     }
     
     var body: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            ArcadeBackground(variant: .quiet)
             
-            VStack(spacing: 20) {
-                // Title
-                Text("SELECT SHIP")
-                    .font(.custom("Orbitron-Bold", size: 28))
-                    .foregroundColor(.cyan)
-                    .padding(.top, 40)
-                
-                // Ship carousel
-                TabView(selection: $selectedShip) {
-                    ForEach(ships, id: \.modelName) { ship in
-                        ShipCardView(ship: ship, isUnlocked: checkIfUnlocked(ship), isSelected: selectedShip.modelName == ship.modelName)
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 22) {
+                    hangarHeader
+                    difficultySelector
+                    
+                    TabView(selection: $selectedShip) {
+                        ForEach(ships, id: \.modelName) { ship in
+                            ShipCardView(
+                                ship: ship,
+                                isUnlocked: checkIfUnlocked(ship),
+                                isSelected: selectedShip.modelName == ship.modelName
+                            )
                             .tag(ship)
-                    }
-                }
-                .tabViewStyle(.page(indexDisplayMode: .always))
-                .indexViewStyle(.page(backgroundDisplayMode: .always))
-                .frame(height: 380)
-                .padding(.bottom, 30)
-                
-                Spacer()
-                
-                // Buttons at bottom - matching CustomPracticeView layout
-                HStack(spacing: 20) {
-                    // Back button
-                    Button(action: {
-                        dismiss()
-                    }) {
-                        Text("← Back")
-                            .font(.custom("Exo 2 SemiBold", size: 18))
-                            .foregroundColor(.white)
-                            .frame(width: 100, height: 50)
-                            .background(Color(white: 0.3))
-                            .cornerRadius(10)
-                    }
-                    
-                    Spacer()
-                    
-                    // Launch button
-                    Button(action: {
-                        if checkIfUnlocked(selectedShip) {
-                            showingGame = true
                         }
-                    }) {
-                        Text("🚀 LAUNCH")
-                            .font(.custom("Orbitron-Bold", size: 24))
-                            .foregroundColor(.white)
-                            .frame(width: 200, height: 50)
-                            .background(
-                                checkIfUnlocked(selectedShip) ?
-                                    Color(red: 0.8, green: 0.3, blue: 0.2) :
-                                    Color.gray.opacity(0.5)
-                            )
-                            .cornerRadius(10)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10)
-                                    .stroke(checkIfUnlocked(selectedShip) ? Color.orange : Color.clear, lineWidth: 2)
-                            )
-                            .shadow(color: checkIfUnlocked(selectedShip) ? .orange.opacity(0.6) : .clear, radius: 8)
                     }
-                    .disabled(!checkIfUnlocked(selectedShip))
+                    .tabViewStyle(.page(indexDisplayMode: .never))
+                    .frame(height: 320)
+                    
+                    HStack(spacing: 8) {
+                        ForEach(ships.indices, id: \.self) { index in
+                            Capsule()
+                                .fill(index == selectedShipIndex ? ArcadePalette.signalBright : Color.white.opacity(0.14))
+                                .frame(width: index == selectedShipIndex ? 28 : 10, height: 8)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) {
+                            Button {
+                                dismiss()
+                            } label: {
+                                ArcadeSecondaryActionLabel(title: "Back")
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: 148)
+                            
+                            startButton
+                        }
+                        
+                        VStack(spacing: 12) {
+                            Button {
+                                dismiss()
+                            } label: {
+                                ArcadeSecondaryActionLabel(title: "Back")
+                            }
+                            .buttonStyle(.plain)
+                            
+                            startButton
+                        }
+                    }
                 }
+                .frame(maxWidth: 720, alignment: .leading)
                 .padding(.horizontal, 20)
-                .padding(.bottom, 30)
+                .padding(.top, 34)
+                .padding(.bottom, 28)
+                .frame(maxWidth: .infinity)
             }
         }
         .fullScreenCover(isPresented: $showingGame) {
@@ -111,10 +112,103 @@ struct ShipSelectionView: View {
                 selectedShipModel: selectedShip.modelName,
                 selectedTables: selectedTables,
                 customProblems: selectedProblems,
-                difficulty: selectedDifficulty
+                difficulty: selectedDifficulty,
+                onExitToMenu: returnToTopLevelMenu
             )
         }
         .statusBar(hidden: true)
+    }
+    
+    private var hangarHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("SELECT SHIP")
+                .font(.custom("Orbitron-Bold", size: 34))
+                .foregroundColor(ArcadePalette.textPrimary)
+            
+            Text(hangarSummary)
+                .font(.custom("Exo 2 SemiBold", size: 13))
+                .foregroundColor(ArcadePalette.signalBright)
+                .tracking(1.2)
+        }
+        .padding(.horizontal, 4)
+    }
+    
+    private var difficultySelector: some View {
+        ArcadePanel(accent: ArcadePalette.coolLine) {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text("DIFFICULTY")
+                        .font(.custom("Exo 2 SemiBold", size: 12))
+                        .foregroundColor(ArcadePalette.textPrimary)
+                        .tracking(1.2)
+                    
+                    Spacer(minLength: 8)
+                    
+                    Text(selectedDifficulty.title)
+                        .font(.custom("Exo 2 SemiBold", size: 11))
+                        .foregroundColor(ArcadePalette.textSecondary)
+                        .tracking(0.8)
+                }
+                
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        difficultyOptions
+                    }
+                    
+                    VStack(spacing: 10) {
+                        difficultyOptions
+                    }
+                }
+            }
+        }
+    }
+    
+    private var selectedShipUnlocked: Bool {
+        checkIfUnlocked(selectedShip)
+    }
+    
+    private var selectedShipIndex: Int {
+        ships.firstIndex(where: { $0.modelName == selectedShip.modelName }) ?? 0
+    }
+    
+    private var hangarSummary: String {
+        if isCustomMode {
+            return "\(selectedProblems.count) TARGETS"
+        }
+        
+        guard !selectedTables.isEmpty else { return "NO TABLES" }
+        return selectedTables
+            .sorted()
+            .map { "\($0)×" }
+            .joined(separator: " • ")
+    }
+    
+    private var difficultyOptions: some View {
+        ForEach([Difficulty.easy, .medium, .hard], id: \.self) { difficulty in
+            Button {
+                selectedDifficulty = difficulty
+            } label: {
+                HangarDifficultyCard(
+                    difficulty: difficulty,
+                    isSelected: selectedDifficulty == difficulty
+                )
+            }
+        }
+    }
+    
+    private var startButton: some View {
+        Button {
+            if selectedShipUnlocked {
+                showingGame = true
+            }
+        } label: {
+            ArcadePrimaryActionLabel(
+                title: "Launch",
+                enabled: selectedShipUnlocked
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(!selectedShipUnlocked)
     }
     
     func checkIfUnlocked(_ ship: SpaceShip) -> Bool {
@@ -126,13 +220,20 @@ struct ShipSelectionView: View {
         
         switch ship.unlockLevel {
         case 1: return completedTables.contains(2)  // Just 2× table now
-        case 2: return completedTables.contains(3) || completedTables.contains(4)
-        case 3: return completedTables.contains(5) || completedTables.contains(6)
-        case 4: return completedTables.contains(7) || completedTables.contains(8)
-        case 5: return completedTables.contains(9) || completedTables.contains(10)
-        case 6: return completedTables.contains(11) || completedTables.contains(12)
-        case 7: return completedDifficulties.contains("medium") || completedDifficulties.contains("hard")
+        case 2: return completedTables.contains(3) && completedTables.contains(4)
+        case 3: return completedTables.contains(5) && completedTables.contains(6)
+        case 4: return completedTables.contains(7) && completedTables.contains(8)
+        case 5: return completedTables.contains(9) && completedTables.contains(10)
+        case 6: return completedTables.contains(11) && completedTables.contains(12)
+        case 7: return completedDifficulties.contains("medium") && completedDifficulties.contains("hard")
         default: return false
+        }
+    }
+    
+    private func returnToTopLevelMenu() {
+        showingGame = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            onReturnToMenu()
         }
     }
 }
@@ -143,114 +244,123 @@ struct ShipCardView: View {
     let isSelected: Bool
     
     var body: some View {
-        VStack(spacing: 8) {
-            // 3D Ship preview
-            SceneKitShipView(modelName: ship.modelName, isUnlocked: isUnlocked)
-                .frame(height: 200)
-                .cornerRadius(15)
-            
-            // Ship name
-            Text(ship.name)
-                .font(.custom("Orbitron-Bold", size: 18))
-                .foregroundColor(isUnlocked ? .cyan : Color(white: 0.4))
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
-                .shadow(color: isUnlocked ? .cyan : .clear, radius: 5)
-            
-            // Unlock status
-            Text(isUnlocked ? "✓ Unlocked" : "🔒 \(ship.unlockRequirement)")
-                .font(.custom("Exo 2", size: 12))
-                .foregroundColor(isUnlocked ? .green : .orange)
-                .multilineTextAlignment(.center)
-                .frame(height: 28)
-        }
-        .padding(12)
-        .background(
-            LinearGradient(
-                colors: [Color(white: 0.15), Color(white: 0.08)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-        .cornerRadius(20)
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .stroke(
-                    LinearGradient(
-                        colors: isSelected ? [.green, .cyan] : (isUnlocked ? [.cyan, .blue] : [Color(white: 0.3), Color(white: 0.2)]),
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: isSelected ? 5 : 3
-                )
-        )
-        .shadow(color: isSelected ? .green.opacity(0.6) : (isUnlocked ? .cyan.opacity(0.4) : .clear), radius: 12)
-        .padding(.horizontal, 20)
-    }
-}
-
-struct SceneKitShipView: UIViewRepresentable {
-    let modelName: String
-    let isUnlocked: Bool
-    
-    func makeUIView(context: Context) -> SCNView {
-        let sceneView = SCNView()
-        sceneView.backgroundColor = .clear
-        sceneView.autoenablesDefaultLighting = true
-        sceneView.allowsCameraControl = false
-        
-        let scene = SCNScene()
-        sceneView.scene = scene
-        
-        if let shipScene = SCNScene(named: "art.scnassets/\(modelName)") {
-            let shipNode = SCNNode()
-            for child in shipScene.rootNode.childNodes {
-                shipNode.addChildNode(child)
-            }
-            shipNode.scale = SCNVector3(x: 1.0, y: 1.0, z: 1.0)
-            shipNode.eulerAngles = SCNVector3(x: 0, y: Float.pi / 4, z: 0)
-            scene.rootNode.addChildNode(shipNode)
-            
-            if !isUnlocked {
-                shipNode.enumerateChildNodes { node, _ in
-                    node.geometry?.firstMaterial?.diffuse.contents = UIColor(white: 0.15, alpha: 1.0)
-                    node.geometry?.firstMaterial?.emission.contents = UIColor.black
-                    node.geometry?.firstMaterial?.specular.contents = UIColor.black
-                    node.geometry?.firstMaterial?.lightingModel = .constant
+        ArcadePanel(accent: accentColor) {
+            VStack(alignment: .leading, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [ArcadePalette.panelBottom.opacity(0.96), Color.black.opacity(0.62)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(ArcadePalette.panelLine.opacity(0.9), lineWidth: 1.0)
+                    
+                    ArcadeAssetPreviewView(
+                        modelName: ship.modelName,
+                        isDimmed: false,
+                        cameraZ: 3.5,
+                        scale: 1.0,
+                        yRotation: Float.pi / 4,
+                        rotationDuration: 6
+                    )
+                    .padding(8)
+                    
+                    if !isUnlocked {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Color.black.opacity(0.42))
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 34, weight: .bold))
+                            .foregroundColor(ArcadePalette.warning)
+                            .padding(18)
+                            .background(
+                                Circle()
+                                    .fill(Color.black.opacity(0.62))
+                            )
+                            .overlay(
+                                Circle()
+                                    .stroke(ArcadePalette.warning.opacity(0.72), lineWidth: 1.4)
+                            )
+                    }
+                }
+                .frame(height: 180)
+                
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(ship.name.uppercased())
+                        .font(.custom("Orbitron-Bold", size: 19))
+                        .foregroundColor(ArcadePalette.textPrimary)
+                        .minimumScaleFactor(0.75)
+                        .lineLimit(1)
+                    
+                    Text(isUnlocked ? "READY" : "LOCKED")
+                        .font(.custom("Exo 2 SemiBold", size: 12))
+                        .foregroundColor(isUnlocked ? ArcadePalette.signalBright : ArcadePalette.warning)
+                        .tracking(1.4)
+                    
+                    if !isUnlocked {
+                        Text(ship.unlockRequirement.uppercased())
+                            .font(.custom("Exo 2 Medium", size: 13))
+                            .foregroundColor(ArcadePalette.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
-            
-            let rotateAction = SCNAction.repeatForever(SCNAction.rotateBy(x: 0, y: 1.5, z: 0, duration: 3.0))
-            shipNode.runAction(rotateAction)
         }
-        
-        let camera = SCNCamera()
-        let cameraNode = SCNNode()
-        cameraNode.camera = camera
-        cameraNode.position = SCNVector3(x: 0, y: 0, z: 3)
-        scene.rootNode.addChildNode(cameraNode)
-        
-        return sceneView
+        .padding(.horizontal, 4)
     }
     
-    func updateUIView(_ uiView: SCNView, context: Context) {}
+    private var accentColor: Color {
+        if isSelected && isUnlocked { return ArcadePalette.signal }
+        if isUnlocked { return ArcadePalette.coolLine }
+        return ArcadePalette.warning
+    }
 }
 
-// UIViewControllerRepresentable to wrap GameViewController
-struct GameViewControllerRepresentable: UIViewControllerRepresentable {
-    let selectedShipModel: String
-    let selectedTables: [Int]
-    let customProblems: [String]
+private struct HangarDifficultyCard: View {
     let difficulty: Difficulty
+    let isSelected: Bool
     
-    func makeUIViewController(context: Context) -> GameViewController {
-        let gameVC = GameViewController()
-        gameVC.selectedShipModel = selectedShipModel
-        gameVC.selectedTables = selectedTables
-        gameVC.customProblems = customProblems
-        gameVC.difficulty = difficulty
-        return gameVC
+    var body: some View {
+        VStack(spacing: 6) {
+            Text(difficulty.title)
+                .font(.custom("Orbitron-Bold", size: 16))
+                .foregroundColor(.white)
+            Text(description)
+                .font(.custom("Exo 2 SemiBold", size: 10))
+                .foregroundColor(isSelected ? Color.white.opacity(0.78) : ArcadePalette.textSecondary)
+                .tracking(1.1)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity)
+        .frame(height: 72)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    isSelected
+                        ? ArcadePalette.coolLine.opacity(0.18)
+                        : ArcadePalette.panelBottom.opacity(0.82)
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(
+                    isSelected ? ArcadePalette.coolLine : ArcadePalette.panelLine.opacity(0.85),
+                    lineWidth: isSelected ? 1.5 : 1.0
+                )
+        )
     }
     
-    func updateUIViewController(_ uiViewController: GameViewController, context: Context) {}
+    private var description: String {
+        switch difficulty {
+        case .easy:
+            return "2 chances"
+        case .medium:
+            return "1 chance"
+        case .hard:
+            return "4 answers"
+        }
+    }
 }

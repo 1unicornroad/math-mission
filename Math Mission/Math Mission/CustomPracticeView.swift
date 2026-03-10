@@ -56,6 +56,7 @@ struct CustomPracticeView: View {
                 
                 HStack(spacing: 20) {
                     Button {
+                        AudioManager.shared.playButtonTap()
                         closeView()
                     } label: {
                         Text("BACK")
@@ -74,6 +75,7 @@ struct CustomPracticeView: View {
                     Spacer()
                     
                     Button {
+                        AudioManager.shared.playButtonTap()
                         showingShipSelection = true
                     } label: {
                         Text("OPEN HANGAR")
@@ -146,6 +148,7 @@ private struct PracticeGridSection: View {
                 ForEach(1...12, id: \.self) { multiplier in
                     let problemKey = "\(multiplier)×\(table)"
                     Button {
+                        AudioManager.shared.playButtonTap()
                         if selectedProblems.contains(problemKey) {
                             selectedProblems.remove(problemKey)
                         } else {

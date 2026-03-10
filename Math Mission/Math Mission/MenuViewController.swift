@@ -128,6 +128,7 @@ class MenuViewController: UIViewController {
     }
     
     @objc func tableButtonTapped(_ sender: UIButton) {
+        AudioManager.shared.playButtonTap()
         let table = sender.tag
         
         if selectedTables.contains(table) {
@@ -144,6 +145,7 @@ class MenuViewController: UIViewController {
     }
     
     @objc func difficultyButtonTapped(_ sender: UIButton) {
+        AudioManager.shared.playButtonTap()
         let difficulties: [Difficulty] = [.easy, .medium, .hard]
         selectedDifficulty = difficulties[sender.tag]
         
@@ -170,6 +172,7 @@ class MenuViewController: UIViewController {
     }
     
     @objc func customButtonTapped() {
+        AudioManager.shared.playButtonTap()
         let customVC = CustomTimesTableViewController()
         customVC.selectedDifficulty = selectedDifficulty
         customVC.modalPresentationStyle = .fullScreen
@@ -177,6 +180,7 @@ class MenuViewController: UIViewController {
     }
     
     @objc func launchButtonTapped() {
+        AudioManager.shared.playButtonTap()
         // Go to ship selection
         let shipSelectionVC = ShipSelectionViewController()
         shipSelectionVC.selectedTables = Array(selectedTables)

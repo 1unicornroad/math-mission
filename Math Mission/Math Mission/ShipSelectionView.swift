@@ -16,6 +16,8 @@ struct ShipSelectionView: View {
     @Binding var selectedDifficulty: Difficulty
     @State private var selectedShip: SpaceShip
     @State private var showingGame = false
+    @State private var isLaunching = false
+    @State private var launchFadeOpacity = 0.0
     @Environment(\.dismiss) private var dismiss
     
     let ships: [SpaceShip] = [
@@ -24,7 +26,7 @@ struct ShipSelectionView: View {
         SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× and 4× tables", unlockLevel: 2),
         SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× and 6× tables", unlockLevel: 3),
         SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× and 8× tables", unlockLevel: 4),
-        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 9× and 10× tables", unlockLevel: 5),
+        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 8× and 9× tables", unlockLevel: 5),
         SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× and 12× tables", unlockLevel: 6),
         SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium and Hard modes", unlockLevel: 7)
     ]
@@ -78,6 +80,7 @@ struct ShipSelectionView: View {
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 12) {
                             Button {
+                                AudioManager.shared.playButtonTap()
                                 dismiss()
                             } label: {
                                 ArcadeSecondaryActionLabel(title: "Back")
@@ -90,6 +93,7 @@ struct ShipSelectionView: View {
                         
                         VStack(spacing: 12) {
                             Button {
+                                AudioManager.shared.playButtonTap()
                                 dismiss()
                             } label: {
                                 ArcadeSecondaryActionLabel(title: "Back")
@@ -106,6 +110,11 @@ struct ShipSelectionView: View {
                 .padding(.bottom, 28)
                 .frame(maxWidth: .infinity)
             }
+            
+            Color.black
+                .ignoresSafeArea()
+                .opacity(launchFadeOpacity)
+                .allowsHitTesting(isLaunching)
         }
         .fullScreenCover(isPresented: $showingGame) {
             GameFlowView(
@@ -186,6 +195,7 @@ struct ShipSelectionView: View {
     private var difficultyOptions: some View {
         ForEach([Difficulty.easy, .medium, .hard], id: \.self) { difficulty in
             Button {
+                AudioManager.shared.playButtonTap()
                 selectedDifficulty = difficulty
             } label: {
                 HangarDifficultyCard(
@@ -199,7 +209,8 @@ struct ShipSelectionView: View {
     private var startButton: some View {
         Button {
             if selectedShipUnlocked {
-                showingGame = true
+                AudioManager.shared.playButtonTap()
+                beginLaunchTransition()
             }
         } label: {
             ArcadePrimaryActionLabel(
@@ -223,7 +234,7 @@ struct ShipSelectionView: View {
         case 2: return completedTables.contains(3) && completedTables.contains(4)
         case 3: return completedTables.contains(5) && completedTables.contains(6)
         case 4: return completedTables.contains(7) && completedTables.contains(8)
-        case 5: return completedTables.contains(9) && completedTables.contains(10)
+        case 5: return completedTables.contains(8) && completedTables.contains(9)
         case 6: return completedTables.contains(11) && completedTables.contains(12)
         case 7: return completedDifficulties.contains("medium") && completedDifficulties.contains("hard")
         default: return false
@@ -232,8 +243,24 @@ struct ShipSelectionView: View {
     
     private func returnToTopLevelMenu() {
         showingGame = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        isLaunching = true
+        launchFadeOpacity = 1.0
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
             onReturnToMenu()
+        }
+    }
+    
+    private func beginLaunchTransition() {
+        guard !isLaunching else { return }
+        isLaunching = true
+        AudioManager.shared.stopMenuMusic()
+        
+        withAnimation(.easeInOut(duration: 0.4)) {
+            launchFadeOpacity = 1.0
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
+            showingGame = true
         }
     }
 }

@@ -36,12 +36,19 @@ struct MenuView: View {
         }
         .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.42), value: isSetupRevealed)
-        .onAppear(perform: restartAnimations)
-        .onDisappear(perform: resetAnimations)
+        .onAppear {
+            AudioManager.shared.startMenuMusic()
+            restartAnimations()
+        }
+        .onDisappear {
+            AudioManager.shared.stopMenuMusic()
+            resetAnimations()
+        }
         .onChange(of: showingShipSelection) { _, isPresented in
             if isPresented {
                 resetAnimations()
             } else {
+                AudioManager.shared.startMenuMusic()
                 restartAnimations()
             }
         }
@@ -49,6 +56,7 @@ struct MenuView: View {
             if isPresented {
                 resetAnimations()
             } else {
+                AudioManager.shared.startMenuMusic()
                 restartAnimations()
             }
         }
@@ -78,7 +86,7 @@ struct MenuView: View {
             
             ArcadeSignalLights(isActive: signalBlink, accent: ArcadePalette.signalBright)
             
-            Text("MATH MISSION")
+            Text("MATH BLAST")
                 .font(.custom("Orbitron-Bold", size: 44))
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
@@ -94,6 +102,7 @@ struct MenuView: View {
                 .tracking(2.0)
             
             Button {
+                AudioManager.shared.playButtonTap()
                 revealSetup()
             } label: {
                 Text("PRESS START")
@@ -120,6 +129,7 @@ struct MenuView: View {
         .padding(.horizontal, 24)
         .contentShape(Rectangle())
         .onTapGesture {
+            AudioManager.shared.playButtonTap()
             revealSetup()
         }
     }
@@ -149,6 +159,7 @@ struct MenuView: View {
                         LazyVGrid(columns: columns, spacing: 10) {
                             ForEach(1...12, id: \.self) { number in
                                 Button {
+                                    AudioManager.shared.playButtonTap()
                                     if selectedTables.contains(number) {
                                         selectedTables.remove(number)
                                     } else {
@@ -166,6 +177,7 @@ struct MenuView: View {
                 }
                 
                 Button {
+                    AudioManager.shared.playButtonTap()
                     showPracticeBay()
                 } label: {
                     MenuModeButton(
@@ -177,6 +189,7 @@ struct MenuView: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) {
                         Button {
+                            AudioManager.shared.playButtonTap()
                             showAttract()
                         } label: {
                             ArcadeSecondaryActionLabel(title: "Back")
@@ -188,6 +201,7 @@ struct MenuView: View {
                     
                     VStack(spacing: 12) {
                         Button {
+                            AudioManager.shared.playButtonTap()
                             showAttract()
                         } label: {
                             ArcadeSecondaryActionLabel(title: "Back")
@@ -215,6 +229,7 @@ struct MenuView: View {
     
     private var startButton: some View {
         Button {
+            AudioManager.shared.playButtonTap()
             showingShipSelection = true
         } label: {
             ArcadePrimaryActionLabel(

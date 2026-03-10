@@ -17,8 +17,11 @@ struct GameFlowView: View {
     @State private var showingUnlockScreen = false
     @State private var newlyUnlockedShips: [SpaceShip] = []
     @State private var currentCustomProblems: [String]
+    @State private var replayFocusProblems: [String]
     @State private var isReplaySession = false
     @State private var gameKey = UUID()  // Force recreate game view
+    @State private var shouldBeginGameplay = false
+    @State private var transitionOpacity = 1.0
     
     init(
         selectedShipModel: String,
@@ -33,6 +36,21 @@ struct GameFlowView: View {
         self.difficulty = difficulty
         self.onExitToMenu = onExitToMenu
         self._currentCustomProblems = State(initialValue: customProblems)
+        self._replayFocusProblems = State(initialValue: [])
+    }
+    
+    func beginLaunchSequence() {
+        withAnimation(.easeOut(duration: 0.18)) {
+            transitionOpacity = 1.0
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
+            shouldBeginGameplay = true
+            
+            withAnimation(.easeInOut(duration: 0.55)) {
+                transitionOpacity = 0.0
+            }
+        }
     }
     
     var body: some View {
@@ -42,7 +60,9 @@ struct GameFlowView: View {
                 selectedShipModel: selectedShipModel,
                 selectedTables: selectedTables,
                 customProblems: currentCustomProblems,
+                replayFocusProblems: replayFocusProblems,
                 isReplaySession: isReplaySession,
+                shouldBeginGameplay: shouldBeginGameplay,
                 difficulty: difficulty,
                 onGameOver: handleGameOver,
                 onPlayAgain: handlePlayAgain,
@@ -50,6 +70,12 @@ struct GameFlowView: View {
             )
             .id(gameKey)  // Recreate when key changes
             .ignoresSafeArea()
+            
+            Color.black
+                .ignoresSafeArea()
+                .opacity(transitionOpacity)
+                .allowsHitTesting(transitionOpacity > 0.01)
+                .zIndex(showingUnlockScreen ? 0 : 2)
             
             // Unlock screen overlay
             if showingUnlockScreen && !newlyUnlockedShips.isEmpty {
@@ -62,6 +88,9 @@ struct GameFlowView: View {
             }
         }
         .statusBar(hidden: true)
+        .onAppear {
+            beginLaunchSequence()
+        }
     }
     
     func handleGameOver(meteorsDestroyed: Int, firstAttemptCorrect: Int, perfectProblems: [String: Int]) {
@@ -89,11 +118,17 @@ struct GameFlowView: View {
     
     func handlePlayAgain(missedProblems: [String]) {
         print("🎮 Restarting game with \(missedProblems.count) missed problems")
-        // Update to use missed problems as custom problems
-        currentCustomProblems = missedProblems
+        let normalizedMissed = missedProblems.map(normalizedProblemKey)
+        replayFocusProblems = Array(Set(normalizedMissed)).sorted()
+        currentCustomProblems = buildReplayProblemDeck(from: normalizedMissed)
         isReplaySession = true
+        shouldBeginGameplay = false
+        transitionOpacity = 1.0
         // Force recreate the game view
         gameKey = UUID()
+        DispatchQueue.main.async {
+            beginLaunchSequence()
+        }
     }
     
     func checkForUnlocks(meteorsDestroyed: Int, firstAttemptCorrect: Int, perfectProblems: [String: Int], selectedTables: [Int], difficulty: Difficulty) -> [SpaceShip] {
@@ -151,7 +186,7 @@ struct GameFlowView: View {
             SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× and 4× tables", unlockLevel: 2),
             SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× and 6× tables", unlockLevel: 3),
             SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× and 8× tables", unlockLevel: 4),
-            SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 9× and 10× tables", unlockLevel: 5),
+            SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 8× and 9× tables", unlockLevel: 5),
             SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× and 12× tables", unlockLevel: 6),
             SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium and Hard modes", unlockLevel: 7)
         ]
@@ -178,7 +213,7 @@ struct GameFlowView: View {
             case 4:
                 isNowUnlocked = previouslyCompletedTables.contains(7) && previouslyCompletedTables.contains(8)
             case 5:
-                isNowUnlocked = previouslyCompletedTables.contains(9) && previouslyCompletedTables.contains(10)
+                isNowUnlocked = previouslyCompletedTables.contains(8) && previouslyCompletedTables.contains(9)
             case 6:
                 isNowUnlocked = previouslyCompletedTables.contains(11) && previouslyCompletedTables.contains(12)
             case 7:
@@ -206,6 +241,30 @@ struct GameFlowView: View {
         case .hard: return "hard"
         }
     }
+
+    func buildReplayProblemDeck(from missedProblems: [String]) -> [String] {
+        let baseProblems: [String]
+        if !customProblems.isEmpty {
+            baseProblems = customProblems.map(normalizedProblemKey)
+        } else {
+            baseProblems = selectedTables
+                .sorted()
+                .flatMap { table in
+                    (1...12).map { "\($0)×\(table)" }
+                }
+        }
+
+        let normalizedBase = Array(Set(baseProblems)).sorted()
+        let weightedMissed = missedProblems + missedProblems + missedProblems
+        let weightedDeck = normalizedBase + weightedMissed
+        return weightedDeck.isEmpty ? Array(Set(missedProblems)).sorted() : weightedDeck
+    }
+
+    func normalizedProblemKey(_ problem: String) -> String {
+        problem
+            .replacingOccurrences(of: " = ?", with: "")
+            .replacingOccurrences(of: " ", with: "")
+    }
 }
 
 // Wrapper that can communicate back to SwiftUI
@@ -213,7 +272,9 @@ struct GameViewControllerWrapper: UIViewControllerRepresentable {
     let selectedShipModel: String
     let selectedTables: [Int]
     let customProblems: [String]
+    let replayFocusProblems: [String]
     let isReplaySession: Bool
+    let shouldBeginGameplay: Bool
     let difficulty: Difficulty
     let onGameOver: (Int, Int, [String: Int]) -> Void
     let onPlayAgain: ([String]) -> Void
@@ -224,6 +285,7 @@ struct GameViewControllerWrapper: UIViewControllerRepresentable {
         gameVC.selectedShipModel = selectedShipModel
         gameVC.selectedTables = selectedTables
         gameVC.customProblems = customProblems
+        gameVC.replayFocusProblems = replayFocusProblems
         gameVC.isReplaySession = isReplaySession
         gameVC.difficulty = difficulty
         
@@ -249,7 +311,11 @@ struct GameViewControllerWrapper: UIViewControllerRepresentable {
     
     func updateUIViewController(_ uiViewController: GameViewController, context: Context) {
         uiViewController.customProblems = customProblems
+        uiViewController.replayFocusProblems = replayFocusProblems
         uiViewController.isReplaySession = isReplaySession
+        if shouldBeginGameplay {
+            uiViewController.beginGameplayIfNeeded()
+        }
     }
     
     func makeCoordinator() -> Coordinator {

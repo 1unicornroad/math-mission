@@ -41,11 +41,13 @@ class GameViewController: UIViewController {
     // Game settings from menu
     var selectedTables: [Int] = [2, 3, 4, 5]  // Default
     var customProblems: [String] = []  // For custom mode like ["3×4", "5×7"]
+    var replayFocusProblems: [String] = []
     var isReplaySession = false
     var difficulty: Difficulty = .easy
     var maxAttempts: Int = 2
     var selectedShipModel: String = "craft_speederA.dae"
     var didCompleteReplaySession = false
+    var didCompleteMission = false
     var meteor: SCNNode?
     var questionLabel: UILabel!
     var questionPanel: UIView!
@@ -59,6 +61,7 @@ class GameViewController: UIViewController {
     var exitButton: UIButton!
     var starfieldTimer: Timer?
     var isEndingSession = false
+    var hasStartedGameplay = false
     
     // Control panel buttons
     var answerButtons: [UIButton] = []
@@ -81,6 +84,7 @@ class GameViewController: UIViewController {
     let arcadeWarning = UIColor(red: 0.99, green: 0.74, blue: 0.24, alpha: 1.0)
     let arcadeDanger = UIColor(red: 0.93, green: 0.33, blue: 0.27, alpha: 1.0)
     let replayMasteryThreshold = 3
+    let missionQuestionLimit = 50
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -100,15 +104,6 @@ class GameViewController: UIViewController {
         setupStars()
         setupLighting()
         setupUI()
-        
-        // Start audio
-        AudioManager.shared.startThruster()
-        
-        // Start animation
-        startAnimation()
-        
-        // Start first question
-        spawnMeteorWithQuestion()
     }
     
     override func viewDidLayoutSubviews() {
@@ -126,6 +121,15 @@ class GameViewController: UIViewController {
         starfieldTimer?.invalidate()
         starfieldTimer = nil
         AudioManager.shared.stopThruster()
+    }
+    
+    func beginGameplayIfNeeded() {
+        guard !hasStartedGameplay else { return }
+        hasStartedGameplay = true
+        AudioManager.shared.startThruster()
+        AudioManager.shared.startGameplayMusic()
+        startAnimation()
+        spawnMeteorWithQuestion()
     }
     
     func applyArcadePanelStyle(
@@ -370,14 +374,14 @@ class GameViewController: UIViewController {
         // Left engine flame (back of ship in world coords after rotation)
         let leftFlame = createFlameParticles()
         let leftEngineNode = SCNNode()
-        leftEngineNode.position = SCNVector3(x: -0.28, y: -0.02, z: -1.25)
+        leftEngineNode.position = SCNVector3(x: -0.28, y: 0.08, z: -1.25)
         leftEngineNode.addParticleSystem(leftFlame)
         spaceship.addChildNode(leftEngineNode)
         
         // Right engine flame
         let rightFlame = createFlameParticles()
         let rightEngineNode = SCNNode()
-        rightEngineNode.position = SCNVector3(x: 0.28, y: -0.02, z: -1.25)
+        rightEngineNode.position = SCNVector3(x: 0.28, y: 0.08, z: -1.25)
         rightEngineNode.addParticleSystem(rightFlame)
         spaceship.addChildNode(rightEngineNode)
     }
@@ -786,6 +790,10 @@ class GameViewController: UIViewController {
     
     func spawnMeteorWithQuestion() {
         guard !isEndingSession else { return }
+        guard questionNumber < missionQuestionLimit else {
+            completeMission()
+            return
+        }
         
         // Remove old meteor if exists
         meteor?.removeFromParentNode()
@@ -930,6 +938,8 @@ class GameViewController: UIViewController {
                 guard !self.isEndingSession else { return }
                 if self.hasMasteredReplayProblemSet() {
                     self.completeReplaySession()
+                } else if self.questionNumber >= self.missionQuestionLimit {
+                    self.completeMission()
                 } else {
                     self.spawnMeteorWithQuestion()
                 }
@@ -1282,10 +1292,33 @@ class GameViewController: UIViewController {
     }
     
     func showGameOver() {
-        guard !isEndingSession else { return }
+        showEndScreen(success: false)
+    }
+
+    func completeMission() {
+        guard !didCompleteMission else { return }
+        didCompleteMission = true
+        isEndingSession = true
+
+        meteor?.removeAllActions()
+        meteor?.removeFromParentNode()
+        questionLabel.text = "50 / 50"
+        answerButtons.forEach { $0.isEnabled = false }
+
+        UIView.animate(withDuration: 0.25) {
+            self.answerButtons.forEach { $0.alpha = 0.0 }
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.85) {
+            self.showEndScreen(success: true)
+        }
+    }
+
+    func showEndScreen(success: Bool) {
         
         DispatchQueue.main.async {
-            guard !self.isEndingSession else { return }
+            guard self.gameOverOverlay == nil else { return }
+            self.isEndingSession = false
             self.questionPanel.isHidden = true
             self.controlPanel.isHidden = true
             self.livesContainer.isHidden = true
@@ -1293,6 +1326,7 @@ class GameViewController: UIViewController {
             self.answerButtons.forEach { $0.isHidden = true }
             self.spaceship.isHidden = true
             self.meteor?.removeFromParentNode()
+            AudioManager.shared.stopThruster()
             self.addSpinningMeteorDecoration()
             
             self.gameOverOverlay?.removeFromSuperview()
@@ -1324,26 +1358,32 @@ class GameViewController: UIViewController {
             let contentHeight = summaryHeight + (hasReplay ? missedPanelHeight + 14 : 0) + 18 + reservedButtonHeight
             let panelX = (overlay.bounds.width - panelWidth) / 2
             let panelY = max(topInset + 26, (overlay.bounds.height - bottomInset - contentHeight) / 2)
+            let summaryAccent = success ? self.arcadeSuccess : self.arcadeDanger
+            let debriefText = success ? "\(self.missionQuestionLimit) / \(self.missionQuestionLimit) WAVES" : "MISSION DEBRIEF"
+            let debriefColor = success ? self.arcadeSuccess : self.arcadeSignalBright
+            let heroTitleText = success ? "MISSION COMPLETE" : "GAME OVER"
+            let headlineValueText = success ? "\(self.missionQuestionLimit)" : "\(self.totalMeteorsDestroyed)"
+            let headlineLabelText = success ? "MAX LEVEL REACHED" : "TOTAL CLEARED"
             
             let summaryPanel = UIView(frame: CGRect(x: panelX, y: panelY, width: panelWidth, height: summaryHeight))
             self.applyArcadePanelStyle(
                 to: summaryPanel,
-                accent: self.arcadeDanger,
+                accent: summaryAccent,
                 fillColors: [self.arcadePanelSoft, self.arcadePanel],
                 cornerCut: 20
             )
             overlay.addSubview(summaryPanel)
             
             let debriefLabel = UILabel(frame: CGRect(x: 18, y: 18, width: summaryPanel.bounds.width - 36, height: 14))
-            debriefLabel.text = "MISSION DEBRIEF"
+            debriefLabel.text = debriefText
             debriefLabel.font = UIFont.exo2SemiBold(size: 11)
-            debriefLabel.textColor = self.arcadeSignalBright
+            debriefLabel.textColor = debriefColor
             debriefLabel.textAlignment = .center
             summaryPanel.addSubview(debriefLabel)
             self.addArcadeBlinkAnimation(to: debriefLabel, minimumOpacity: 0.46, duration: 0.9)
             
             let heroTitle = UILabel(frame: CGRect(x: 18, y: 38, width: summaryPanel.bounds.width - 36, height: 34))
-            heroTitle.text = "GAME OVER"
+            heroTitle.text = heroTitleText
             heroTitle.font = UIFont.orbitronBold(size: 34)
             heroTitle.textColor = .white
             heroTitle.textAlignment = .center
@@ -1351,16 +1391,16 @@ class GameViewController: UIViewController {
             summaryPanel.addSubview(heroTitle)
             
             let destroyedValue = UILabel(frame: CGRect(x: 18, y: 78, width: summaryPanel.bounds.width - 36, height: 52))
-            destroyedValue.text = "\(self.totalMeteorsDestroyed)"
+            destroyedValue.text = headlineValueText
             destroyedValue.font = UIFont.orbitronBold(size: 52)
-            destroyedValue.textColor = self.arcadeSignalBright
+            destroyedValue.textColor = success ? self.arcadeSuccess : self.arcadeSignalBright
             destroyedValue.textAlignment = .center
             destroyedValue.adjustsFontSizeToFitWidth = true
             destroyedValue.minimumScaleFactor = 0.7
             summaryPanel.addSubview(destroyedValue)
             
             let destroyedLabel = UILabel(frame: CGRect(x: 18, y: 132, width: summaryPanel.bounds.width - 36, height: 18))
-            destroyedLabel.text = "TOTAL CLEARED"
+            destroyedLabel.text = headlineLabelText
             destroyedLabel.font = UIFont.exo2SemiBold(size: 13)
             destroyedLabel.textColor = UIColor.white.withAlphaComponent(0.82)
             destroyedLabel.textAlignment = .center
@@ -1437,7 +1477,7 @@ class GameViewController: UIViewController {
             if hasReplay {
                 let replayButton = self.createActionButton(
                     frame: CGRect(x: panelX, y: primaryButtonY, width: panelWidth, height: 60),
-                    title: "Try Missed",
+                    title: success ? "Replay Missed" : "Try Missed",
                     subtitle: nil,
                     accent: self.arcadeSuccess,
                     fillColors: [self.arcadeSuccess, self.arcadeSignal],
@@ -1458,10 +1498,12 @@ class GameViewController: UIViewController {
             } else {
                 let menuButton = self.createActionButton(
                     frame: CGRect(x: panelX, y: primaryButtonY, width: panelWidth, height: 60),
-                    title: "Menu",
+                    title: success ? "Continue" : "Menu",
                     subtitle: nil,
-                    accent: self.arcadeSignal,
-                    fillColors: [self.arcadeSignalBright, self.arcadeSignal, self.arcadeSignal.withAlphaComponent(0.82)],
+                    accent: success ? self.arcadeSuccess : self.arcadeSignal,
+                    fillColors: success
+                        ? [self.arcadeSuccess, self.arcadeSignal, self.arcadeSuccess.withAlphaComponent(0.84)]
+                        : [self.arcadeSignalBright, self.arcadeSignal, self.arcadeSignal.withAlphaComponent(0.82)],
                     action: #selector(self.backToMenu)
                 )
                 overlay.addSubview(menuButton)
@@ -1533,7 +1575,8 @@ class GameViewController: UIViewController {
     func hasMasteredReplayProblemSet() -> Bool {
         guard isReplaySession else { return false }
         
-        let targetProblems = Set(customProblems.map { normalizedProblemKey(from: $0) })
+        let replayTargets = replayFocusProblems.isEmpty ? customProblems : replayFocusProblems
+        let targetProblems = Set(replayTargets.map { normalizedProblemKey(from: $0) })
         guard !targetProblems.isEmpty else { return false }
         
         return targetProblems.allSatisfy { target in
@@ -1676,6 +1719,7 @@ class GameViewController: UIViewController {
     @objc func playAgainWithMissed() {
         guard !isEndingSession else { return }
         isEndingSession = true
+        AudioManager.shared.playButtonTap()
         let missedProblems = missedQuestions.map { normalizedProblemKey(from: $0) }
         playAgainCallback?(missedProblems)
     }
@@ -1683,6 +1727,7 @@ class GameViewController: UIViewController {
     @objc func backToMenu() {
         guard !isEndingSession else { return }
         isEndingSession = true
+        AudioManager.shared.playButtonTap()
         gameOverCallback?(totalMeteorsDestroyed, firstAttemptCorrect, perfectProblems)
     }
     

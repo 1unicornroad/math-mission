@@ -52,11 +52,86 @@ struct BeveledPanelShape: InsettableShape {
         path.closeSubpath()
         return path
     }
-    
     func inset(by amount: CGFloat) -> some InsettableShape {
         var shape = self
         shape.insetAmount += amount
         return shape
+    }
+}
+
+private struct ArcadeMeteorDriftField: View {
+    let meteorCount: Int
+    let opacity: CGFloat
+    
+    var body: some View {
+        GeometryReader { geometry in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                ZStack {
+                    ForEach(0..<meteorCount, id: \.self) { index in
+                        driftingMeteor(index: index, in: geometry.size, time: time)
+                    }
+                }
+            }
+        }
+        .allowsHitTesting(false)
+    }
+    
+    private func driftingMeteor(index: Int, in size: CGSize, time: TimeInterval) -> some View {
+        let cycle = 34.0 + Double(index) * 5.0
+        let progress = ((time / cycle) + Double(pseudoValue(index * 29 + 4))).truncatingRemainder(dividingBy: 1.0)
+        let scale = 0.82 + pseudoValue(index * 19 + 3) * 0.48
+        let meteorSize = 150 * scale
+        let position = meteorPosition(index: index, in: size, progress: progress, meteorSize: meteorSize)
+        let spin = Angle.degrees(time * (1.2 + Double(index) * 0.18))
+
+        return ArcadeAssetPreviewView(
+            modelName: "meteor_detailed.dae",
+            cameraZ: 5.2,
+            scale: Float(scale * 2.8),
+            yRotation: Float(Double.pi / 6 + Double(index) * 0.28),
+            rotationDuration: 18 + Double(index) * 4
+        )
+        .frame(width: meteorSize, height: meteorSize)
+        .opacity(opacity)
+        .rotationEffect(spin)
+        .position(position)
+    }
+    
+    private func meteorPosition(index: Int, in size: CGSize, progress: CGFloat, meteorSize: CGFloat) -> CGPoint {
+        let pathInset = meteorSize * 1.15
+        let directionMode = index % 3
+        
+        switch directionMode {
+        case 0:
+            let laneY = pseudoValue(index * 37 + 13) * size.height
+            let x = -pathInset + (size.width + pathInset * 2) * progress
+            return CGPoint(x: x, y: laneY)
+        case 1:
+            let laneX = pseudoValue(index * 43 + 15) * size.width
+            let y = -pathInset + (size.height + pathInset * 2) * progress
+            return CGPoint(x: laneX, y: y)
+        default:
+            let startOnLeft = pseudoValue(index * 47 + 5) > 0.5
+            if startOnLeft {
+                let startY = size.height * (0.18 + pseudoValue(index * 31 + 8) * 0.52)
+                let endY = size.height * (0.28 + pseudoValue(index * 59 + 6) * 0.48)
+                let x = -pathInset + (size.width + pathInset * 2) * progress
+                let y = startY + (endY - startY) * progress
+                return CGPoint(x: x, y: y)
+            } else {
+                let startX = size.width * (0.18 + pseudoValue(index * 67 + 7) * 0.52)
+                let endX = size.width * (0.28 + pseudoValue(index * 71 + 9) * 0.48)
+                let x = startX + (endX - startX) * progress
+                let y = -pathInset + (size.height + pathInset * 2) * progress
+                return CGPoint(x: x, y: y)
+            }
+        }
+    }
+    
+    private func pseudoValue(_ seed: Int) -> CGFloat {
+        let value = (seed * 61 + 23) % 100
+        return CGFloat(value) / 100.0
     }
 }
 
@@ -99,7 +174,12 @@ struct ArcadeBackground: View {
                 ArcadeStarField(
                     starCount: isQuiet ? 28 : 48,
                     baseOpacity: isQuiet ? 0.14 : 0.25,
-                    opacityVariation: isQuiet ? 0.18 : 0.45
+                    opacityVariation: isQuiet ? 0.18 : 0.45,
+                    driftSpeed: isQuiet ? 18 : 24
+                )
+                ArcadeMeteorDriftField(
+                    meteorCount: isQuiet ? 2 : 3,
+                    opacity: 1.0
                 )
                 if !isQuiet {
                     ArcadeScanLines()
@@ -115,20 +195,27 @@ private struct ArcadeStarField: View {
     let starCount: Int
     let baseOpacity: CGFloat
     let opacityVariation: CGFloat
+    let driftSpeed: CGFloat
     
     var body: some View {
         GeometryReader { geometry in
-            ZStack {
-                ForEach(0..<starCount, id: \.self) { index in
-                    let size = CGFloat((index % 3) + 1) * 1.8
-                    let x = pseudoValue(index * 31 + 7) * geometry.size.width
-                    let y = pseudoValue(index * 17 + 11) * geometry.size.height
-                    let opacity = baseOpacity + pseudoValue(index * 23 + 3) * opacityVariation
-                    
-                    Circle()
-                        .fill(Color.white.opacity(opacity))
-                        .frame(width: size, height: size)
-                        .position(x: x, y: y)
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                let time = timeline.date.timeIntervalSinceReferenceDate
+                ZStack {
+                    ForEach(0..<starCount, id: \.self) { index in
+                        let size = CGFloat((index % 3) + 1) * 1.8
+                        let baseX = pseudoValue(index * 31 + 7) * geometry.size.width
+                        let baseY = pseudoValue(index * 17 + 11) * geometry.size.height
+                        let depthFactor = 0.55 + pseudoValue(index * 13 + 5) * 0.9
+                        let yTravel = CGFloat(time * Double(driftSpeed) * Double(depthFactor))
+                        let wrappedY = (baseY + yTravel).truncatingRemainder(dividingBy: geometry.size.height + 24) - 12
+                        let opacity = baseOpacity + pseudoValue(index * 23 + 3) * opacityVariation
+                        
+                        Circle()
+                            .fill(Color.white.opacity(opacity))
+                            .frame(width: size, height: size)
+                            .position(x: baseX, y: wrappedY)
+                    }
                 }
             }
         }

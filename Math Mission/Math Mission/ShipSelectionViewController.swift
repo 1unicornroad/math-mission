@@ -29,7 +29,7 @@ class ShipSelectionViewController: UIViewController {
         SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× and 4× tables", unlockLevel: 2),
         SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× and 6× tables", unlockLevel: 3),
         SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× and 8× tables", unlockLevel: 4),
-        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 9× and 10× tables", unlockLevel: 5),
+        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 8× and 9× tables", unlockLevel: 5),
         SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× and 12× tables", unlockLevel: 6),
         SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium and Hard modes", unlockLevel: 7)
     ]
@@ -212,7 +212,7 @@ class ShipSelectionViewController: UIViewController {
         case 4:
             return completedTables.contains(7) && completedTables.contains(8)
         case 5:
-            return completedTables.contains(9) && completedTables.contains(10)
+            return completedTables.contains(8) && completedTables.contains(9)
         case 6:
             return completedTables.contains(11) && completedTables.contains(12)
         case 7:
@@ -227,6 +227,7 @@ class ShipSelectionViewController: UIViewController {
         let ship = ships[index]
         
         if checkIfUnlocked(ship) {
+            AudioManager.shared.playButtonTap()
             selectedShip = ship.modelName
             
             // Update visual selection
@@ -242,16 +243,19 @@ class ShipSelectionViewController: UIViewController {
     }
     
     @objc func pageControlChanged(_ sender: UIPageControl) {
+        AudioManager.shared.playButtonTap()
         let page = sender.currentPage
         let offsetX = CGFloat(page) * view.bounds.width
         scrollView.setContentOffset(CGPoint(x: offsetX, y: 0), animated: true)
     }
     
     @objc func backButtonTapped() {
+        AudioManager.shared.playButtonTap()
         dismiss(animated: true)
     }
     
     @objc func startMissionTapped() {
+        AudioManager.shared.playButtonTap()
         let gameVC = GameViewController()
         gameVC.selectedShipModel = selectedShip
         

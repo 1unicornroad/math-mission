@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		2C268EF62F5B63DB002CDA2B /* Math Mission.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Math Mission.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		2C268EF62F5B63DB002CDA2B /* Math Blast.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Math Blast.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -40,7 +40,7 @@
 		2C268EF72F5B63DB002CDA2B /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2C268EF62F5B63DB002CDA2B /* Math Mission.app */,
+				2C268EF62F5B63DB002CDA2B /* Math Blast.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		2C268EF52F5B63DB002CDA2B /* Math Mission */ = {
+		2C268EF52F5B63DB002CDA2B /* Math Blast */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 2C268F0D2F5B63DD002CDA2B /* Build configuration list for PBXNativeTarget "Math Mission" */;
+			buildConfigurationList = 2C268F0D2F5B63DD002CDA2B /* Build configuration list for PBXNativeTarget "Math Blast" */;
 			buildPhases = (
 				2C268EF22F5B63DB002CDA2B /* Sources */,
 				2C268EF32F5B63DB002CDA2B /* Frameworks */,
@@ -63,11 +63,11 @@
 			fileSystemSynchronizedGroups = (
 				2C268EF82F5B63DB002CDA2B /* Math Mission */,
 			);
-			name = "Math Mission";
+			name = "Math Blast";
 			packageProductDependencies = (
 			);
-			productName = "Math Mission";
-			productReference = 2C268EF62F5B63DB002CDA2B /* Math Mission.app */;
+			productName = "Math Blast";
+			productReference = 2C268EF62F5B63DB002CDA2B /* Math Blast.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -85,7 +85,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 2C268EF12F5B63DB002CDA2B /* Build configuration list for PBXProject "Math Mission" */;
+			buildConfigurationList = 2C268EF12F5B63DB002CDA2B /* Build configuration list for PBXProject "Math Blast" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -99,7 +99,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				2C268EF52F5B63DB002CDA2B /* Math Mission */,
+				2C268EF52F5B63DB002CDA2B /* Math Blast */,
 			);
 		};
 /* End PBXProject section */
@@ -256,6 +256,7 @@
 				DEVELOPMENT_TEAM = CXEQGTW49Y;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Math Blast";
+				INFOPLIST_KEY_CFBundleName = "Math Blast";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				"INFOPLIST_KEY_UIAppFonts[sdk=*]" = "Orbitron-Regular.ttf Orbitron-Medium.ttf Orbitron-Bold.ttf Exo2-Regular.ttf Exo2-Medium.ttf Exo2-SemiBold.ttf Exo2-Bold.ttf";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -271,7 +272,7 @@
 				);
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.seahostler.anna-arcade";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Math Blast";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -292,6 +293,7 @@
 				DEVELOPMENT_TEAM = CXEQGTW49Y;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Math Blast";
+				INFOPLIST_KEY_CFBundleName = "Math Blast";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
 				"INFOPLIST_KEY_UIAppFonts[sdk=*]" = "Orbitron-Regular.ttf Orbitron-Medium.ttf Orbitron-Bold.ttf Exo2-Regular.ttf Exo2-Medium.ttf Exo2-SemiBold.ttf Exo2-Bold.ttf";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -307,7 +309,7 @@
 				);
 				MARKETING_VERSION = 1.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.seahostler.anna-arcade";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Math Blast";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -321,7 +323,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		2C268EF12F5B63DB002CDA2B /* Build configuration list for PBXProject "Math Mission" */ = {
+		2C268EF12F5B63DB002CDA2B /* Build configuration list for PBXProject "Math Blast" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				2C268F0B2F5B63DD002CDA2B /* Debug */,
@@ -330,7 +332,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		2C268F0D2F5B63DD002CDA2B /* Build configuration list for PBXNativeTarget "Math Mission" */ = {
+		2C268F0D2F5B63DD002CDA2B /* Build configuration list for PBXNativeTarget "Math Blast" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				2C268F0E2F5B63DD002CDA2B /* Debug */,

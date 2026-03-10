@@ -15,8 +15,6 @@ struct CustomPracticeView: View {
     @State private var showingShipSelection = false
     @Environment(\.dismiss) private var dismiss
     
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 5)
-    
     init(
         selectedDifficulty: Binding<Difficulty>,
         onClose: (() -> Void)? = nil
@@ -26,76 +24,47 @@ struct CustomPracticeView: View {
     }
     
     var body: some View {
-        ZStack {
-            ArcadeBackground(variant: .quiet)
-                .ignoresSafeArea()
-            
-            VStack(spacing: 20) {
-                Text("CUSTOM PRACTICE")
-                    .font(.custom("Orbitron-Bold", size: 32))
-                    .foregroundColor(ArcadePalette.textPrimary)
-                    .padding(.top, 36)
-                
-                Text(practiceStatus)
-                    .font(.custom("Exo 2 SemiBold", size: 15))
-                    .foregroundColor(selectedProblems.isEmpty ? ArcadePalette.textSecondary : ArcadePalette.signalBright)
-                    .tracking(1.2)
+        GeometryReader { geometry in
+            ZStack {
+                ArcadeBackground(variant: .quiet)
+                    .ignoresSafeArea()
                 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 25) {
-                        ForEach(1...12, id: \.self) { table in
-                            PracticeGridSection(
-                                table: table,
-                                columns: columns,
-                                selectedProblems: $selectedProblems
-                            )
+                    VStack(alignment: .leading, spacing: 22) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("CUSTOM PRACTICE")
+                                .font(.custom("Orbitron-Bold", size: 34))
+                                .foregroundColor(ArcadePalette.textPrimary)
+                            
+                            Text(practiceStatus)
+                                .font(.custom("Exo 2 SemiBold", size: 13))
+                                .foregroundColor(selectedProblems.isEmpty ? ArcadePalette.textSecondary : ArcadePalette.signalBright)
+                                .tracking(1.2)
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.top, 34)
+                        
+                        ArcadePanel(accent: selectedProblems.isEmpty ? ArcadePalette.coolLine : ArcadePalette.signal) {
+                            VStack(spacing: 18) {
+                                ForEach(1...12, id: \.self) { table in
+                                    PracticeGridSection(
+                                        table: table,
+                                        columns: gridColumns(for: geometry.size.width),
+                                        selectedProblems: $selectedProblems
+                                    )
+                                }
+                            }
                         }
                     }
-                    .padding(.vertical, 20)
+                    .frame(maxWidth: 820, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 118)
+                    .frame(maxWidth: .infinity)
                 }
-                
-                HStack(spacing: 20) {
-                    Button {
-                        AudioManager.shared.playButtonTap()
-                        closeView()
-                    } label: {
-                        Text("BACK")
-                            .font(.custom("Exo 2 SemiBold", size: 18))
-                            .foregroundColor(.white)
-                            .frame(width: 110, height: 52)
-                            .background(ArcadePalette.panelTop.opacity(0.95))
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .stroke(ArcadePalette.panelLine, lineWidth: 1.2)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Spacer()
-                    
-                    Button {
-                        AudioManager.shared.playButtonTap()
-                        showingShipSelection = true
-                    } label: {
-                        Text("OPEN HANGAR")
-                            .font(.custom("Orbitron-Bold", size: 22))
-                            .foregroundColor(.white)
-                            .frame(width: 220, height: 52)
-                            .background(
-                                selectedProblems.isEmpty
-                                    ? ArcadePalette.panelTop
-                                    : ArcadePalette.signal
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(selectedProblems.isEmpty)
-                    .opacity(selectedProblems.isEmpty ? 0.5 : 1.0)
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 24)
             }
+        }
+        .safeAreaInset(edge: .bottom) {
+            customPracticeActionBar
         }
         .fullScreenCover(isPresented: $showingShipSelection) {
             ShipSelectionView(
@@ -122,6 +91,70 @@ struct CustomPracticeView: View {
         return "\(selectedProblems.count) TARGETS"
     }
     
+    private var openHangarButton: some View {
+        Button {
+            AudioManager.shared.playButtonTap()
+            showingShipSelection = true
+        } label: {
+            ArcadePrimaryActionLabel(
+                title: "Open Hangar",
+                enabled: !selectedProblems.isEmpty
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(selectedProblems.isEmpty)
+    }
+    
+    private var backButton: some View {
+        Button {
+            AudioManager.shared.playButtonTap()
+            closeView()
+        } label: {
+            ArcadeSecondaryActionLabel(title: "Back")
+        }
+        .buttonStyle(.plain)
+    }
+    
+    private var customPracticeActionBar: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.clear, ArcadePalette.spaceBottom.opacity(0.88)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 28)
+            .allowsHitTesting(false)
+            
+            VStack(spacing: 0) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) {
+                        backButton
+                            .frame(width: 132)
+                        openHangarButton
+                    }
+                    
+                    VStack(spacing: 12) {
+                        backButton
+                        openHangarButton
+                    }
+                }
+                .frame(maxWidth: 820, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity)
+            }
+            .background(ArcadePalette.spaceBottom.opacity(0.94))
+        }
+    }
+    
+    private func gridColumns(for width: CGFloat) -> [GridItem] {
+        let isWide = width >= 900
+        let columnCount = isWide ? 6 : 5
+        let spacing: CGFloat = isWide ? 8 : 10
+        return Array(repeating: GridItem(.flexible(), spacing: spacing), count: columnCount)
+    }
+    
     private func closeView() {
         if let onClose {
             onClose()
@@ -142,7 +175,7 @@ private struct PracticeGridSection: View {
                 .font(.custom("Orbitron-Medium", size: 19))
                 .foregroundColor(ArcadePalette.signalBright)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 20)
+                .padding(.leading, 4)
             
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(1...12, id: \.self) { multiplier in
@@ -158,7 +191,8 @@ private struct PracticeGridSection: View {
                         Text(problemKey)
                             .font(.custom("Exo 2 SemiBold", size: 14))
                             .foregroundColor(.white)
-                            .frame(width: 65, height: 65)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 58)
                             .background(
                                 selectedProblems.contains(problemKey)
                                     ? ArcadePalette.signal.opacity(0.85)
@@ -178,7 +212,6 @@ private struct PracticeGridSection: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 20)
         }
     }
 }

@@ -927,8 +927,8 @@ class GameViewController: UIViewController {
             shootLaser()
             styleAnswerButton(
                 sender,
-                accent: arcadeSuccess,
-                fillColors: [arcadeSuccess, arcadeSignal]
+                accent: arcadeSignal,
+                fillColors: [arcadeSignalBright, arcadeSignal]
             )
             
             // Disable all buttons briefly and fade them
@@ -1479,8 +1479,8 @@ class GameViewController: UIViewController {
                     frame: CGRect(x: panelX, y: primaryButtonY, width: panelWidth, height: 60),
                     title: success ? "Replay Missed" : "Try Missed",
                     subtitle: nil,
-                    accent: self.arcadeSuccess,
-                    fillColors: [self.arcadeSuccess, self.arcadeSignal],
+                    accent: self.arcadeSignal,
+                    fillColors: [self.arcadeSignalBright, self.arcadeSignal, self.arcadeSignal.withAlphaComponent(0.84)],
                     action: #selector(self.playAgainWithMissed)
                 )
                 overlay.addSubview(replayButton)
@@ -1500,9 +1500,9 @@ class GameViewController: UIViewController {
                     frame: CGRect(x: panelX, y: primaryButtonY, width: panelWidth, height: 60),
                     title: success ? "Continue" : "Menu",
                     subtitle: nil,
-                    accent: success ? self.arcadeSuccess : self.arcadeSignal,
+                    accent: self.arcadeSignal,
                     fillColors: success
-                        ? [self.arcadeSuccess, self.arcadeSignal, self.arcadeSuccess.withAlphaComponent(0.84)]
+                        ? [self.arcadeSignalBright, self.arcadeSignal, self.arcadeSignal.withAlphaComponent(0.84)]
                         : [self.arcadeSignalBright, self.arcadeSignal, self.arcadeSignal.withAlphaComponent(0.82)],
                     action: #selector(self.backToMenu)
                 )

@@ -23,16 +23,7 @@ class ShipSelectionViewController: UIViewController {
     var isCustomMode: Bool = false
     var selectedShip: String = "craft_speederA.dae"
     
-    let ships: [SpaceShip] = [
-        SpaceShip(name: "Nova Striker", modelName: "craft_speederA.dae", unlockRequirement: "Default", unlockLevel: 0),
-        SpaceShip(name: "Photon Blade", modelName: "craft_racer.dae", unlockRequirement: "Complete 2× table", unlockLevel: 1),
-        SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× and 4× tables", unlockLevel: 2),
-        SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× and 6× tables", unlockLevel: 3),
-        SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× and 8× tables", unlockLevel: 4),
-        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 8× and 9× tables", unlockLevel: 5),
-        SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× and 12× tables", unlockLevel: 6),
-        SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium and Hard modes", unlockLevel: 7)
-    ]
+    let ships: [SpaceShip] = ShipCatalog.allShips
     
     var shipViews: [(view: UIView, ship: SpaceShip)] = []
     var scrollView: UIScrollView!
@@ -143,7 +134,7 @@ class ShipSelectionViewController: UIViewController {
             
             // Unlock requirement - below name
             let reqLabel = UILabel(frame: CGRect(x: 20, y: 325, width: shipCardWidth - 40, height: 50))
-            reqLabel.text = isUnlocked ? "✓ Unlocked" : "🔒 \(ship.unlockRequirement)"
+            reqLabel.text = isUnlocked ? "✓ Unlocked" : "🔒 \(ShipProgression.requirementText(for: ship))"
             reqLabel.font = UIFont.exo2Regular(size: 16)
             reqLabel.textColor = isUnlocked ? .green : .orange
             reqLabel.numberOfLines = 2
@@ -191,35 +182,7 @@ class ShipSelectionViewController: UIViewController {
     }
     
     func checkIfUnlocked(_ ship: SpaceShip) -> Bool {
-        // Always unlock default ship
-        if ship.unlockLevel == 0 {
-            return true
-        }
-        
-        // Check UserDefaults for unlocked ships based on completed tables
-        let defaults = UserDefaults.standard
-        let completedTables = defaults.array(forKey: "completedTables") as? [Int] ?? []
-        let completedDifficulties = defaults.array(forKey: "completedDifficulties") as? [String] ?? []
-        
-        // Unlock logic based on level
-        switch ship.unlockLevel {
-        case 1:
-            return completedTables.contains(2)
-        case 2:
-            return completedTables.contains(3) && completedTables.contains(4)
-        case 3:
-            return completedTables.contains(5) && completedTables.contains(6)
-        case 4:
-            return completedTables.contains(7) && completedTables.contains(8)
-        case 5:
-            return completedTables.contains(8) && completedTables.contains(9)
-        case 6:
-            return completedTables.contains(11) && completedTables.contains(12)
-        case 7:
-            return completedDifficulties.contains("medium") && completedDifficulties.contains("hard")
-        default:
-            return false
-        }
+        ShipProgression.isUnlocked(ship, progress: PlayerProfileStore.shared.activeProgress)
     }
     
     @objc func shipCardTapped(_ gesture: UITapGestureRecognizer) {

@@ -27,12 +27,17 @@ struct ShipUnlockView: View {
                         .font(.custom("Orbitron-Bold", size: 32))
                         .foregroundColor(.white)
                         .shadow(color: ArcadePalette.signal.opacity(isPulsing ? 0.65 : 0.35), radius: isPulsing ? 20 : 10)
-                        .scaleEffect(isPulsing ? 1.03 : 1.0)
+                        .scaleEffect(isPulsing ? 1.06 : 1.0)
                     
-                    Text("ADDED TO HANGAR")
+                    Text("SHIP UNLOCKED")
                         .font(.custom("Exo 2 SemiBold", size: 13))
                         .foregroundColor(ArcadePalette.signalBright)
                         .tracking(1.6)
+                    
+                    Text("THIS CRAFT JUST JOINED YOUR HANGAR")
+                        .font(.custom("Exo 2 SemiBold", size: 11))
+                        .foregroundColor(ArcadePalette.textSecondary)
+                        .tracking(1.1)
                     
                     if unlockedShips.count > 1 {
                         Text("\(currentIndex + 1) / \(unlockedShips.count)")
@@ -73,7 +78,7 @@ struct ShipUnlockView: View {
                                     .font(.custom("Orbitron-Bold", size: 27))
                                     .foregroundColor(.white)
                                 
-                                Text(unlockedShips[currentIndex].unlockRequirement)
+                                Text(ShipProgression.requirementText(for: unlockedShips[currentIndex]))
                                     .font(.custom("Exo 2 Medium", size: 15))
                                     .foregroundColor(ArcadePalette.textSecondary)
                             }

@@ -34,6 +34,11 @@ enum PlayerAvatar: String, CaseIterable, Codable {
     }
 }
 
+struct PlayerRank {
+    let title: String
+    let detail: String
+}
+
 struct PlayerProgress: Equatable {
     var completedTables: [Int] = []
     var completedDifficulties: [String] = []
@@ -326,6 +331,10 @@ final class PlayerProfileStore: ObservableObject {
         return false
     }
 
+    var activeRank: PlayerRank {
+        rank(for: activeProfile)
+    }
+
     func continueAsGuest() {
         guestProgress = PlayerProgress()
         activeSession = .guest
@@ -413,6 +422,26 @@ final class PlayerProfileStore: ObservableObject {
             totalFirstAttemptCorrect: 0,
             totalMisses: 0
         )
+    }
+
+    func rank(for profile: PlayerProfile? = nil) -> PlayerRank {
+        let summary = recordSummary(for: profile)
+        let score = summary.lifetimeStars + summary.missionsCompleted * 8 + summary.bestStreak * 2 + summary.firstAttemptAccuracy
+
+        switch score {
+        case ..<20:
+            return PlayerRank(title: "CADET", detail: "STARTING FLIGHT TRAINING")
+        case ..<50:
+            return PlayerRank(title: "WINGMAN", detail: "HOLDING A CLEAN FORMATION")
+        case ..<90:
+            return PlayerRank(title: "PILOT", detail: "CLEARING DECKS WITH CONFIDENCE")
+        case ..<140:
+            return PlayerRank(title: "ACE", detail: "STACKING STARS ACROSS THE BOARD")
+        case ..<210:
+            return PlayerRank(title: "COMMANDER", detail: "LEADING THE TRAINING SQUAD")
+        default:
+            return PlayerRank(title: "STAR CAPTAIN", detail: "MASTER OF THE FULL FLIGHT DECK")
+        }
     }
 
     func unlockedShips(for profile: PlayerProfile? = nil) -> [SpaceShip] {

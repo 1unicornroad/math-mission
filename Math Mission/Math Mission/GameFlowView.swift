@@ -142,7 +142,7 @@ struct GameFlowView: View {
         
         var newlyUnlocked: [SpaceShip] = []
         
-        // Check each selected table to see if all 12 multiples were answered perfectly TWICE
+        // Check each selected table to see if all 12 multiples were answered perfectly at least once
         if arithmeticMode == .multiplication {
             for table in selectedTables {
                 if updatedProgress.completedTables.contains(table) {
@@ -156,7 +156,7 @@ struct GameFlowView: View {
                     let count1 = perfectProblems[problem1] ?? 0
                     let count2 = perfectProblems[problem2] ?? 0
                     
-                    if count1 + count2 < 2 {
+                    if count1 + count2 < 1 {
                         completedAll = false
                         break
                     }
@@ -169,8 +169,8 @@ struct GameFlowView: View {
         }
             
         
-        // Mark difficulty as completed if player got 10+ perfect in medium/hard
-        if firstAttemptCorrect >= 10 {
+        // Mark difficulty as completed only when the player actually clears the mission
+        if meteorsDestroyed >= 30 {
             let difficultyString = difficultyToString(difficulty)
             if !updatedProgress.completedDifficulties.contains(difficultyString) {
                 updatedProgress.completedDifficulties.append(difficultyString)
@@ -189,30 +189,7 @@ struct GameFlowView: View {
                 continue // Already unlocked before this game
             }
             
-            let isNowUnlocked: Bool
-            switch ship.unlockLevel {
-            case 0:
-                isNowUnlocked = true
-            case 1:
-                isNowUnlocked = updatedProgress.completedTables.contains(2)
-            case 2:
-                isNowUnlocked = updatedProgress.completedTables.contains(3) && updatedProgress.completedTables.contains(4)
-            case 3:
-                isNowUnlocked = updatedProgress.completedTables.contains(5) && updatedProgress.completedTables.contains(6)
-            case 4:
-                isNowUnlocked = updatedProgress.completedTables.contains(7) && updatedProgress.completedTables.contains(8)
-            case 5:
-                isNowUnlocked = (updatedProgress.completedTables.contains(8) && updatedProgress.completedTables.contains(9))
-                    || updatedProgress.lifetimeStars >= (ShipProgression.starRequirement(for: 5) ?? .max)
-            case 6:
-                isNowUnlocked = (updatedProgress.completedTables.contains(11) && updatedProgress.completedTables.contains(12))
-                    || updatedProgress.lifetimeStars >= (ShipProgression.starRequirement(for: 6) ?? .max)
-            case 7:
-                isNowUnlocked = (updatedProgress.completedDifficulties.contains("medium") && updatedProgress.completedDifficulties.contains("hard"))
-                    || updatedProgress.lifetimeStars >= (ShipProgression.starRequirement(for: 7) ?? .max)
-            default:
-                isNowUnlocked = false
-            }
+            let isNowUnlocked = ShipProgression.isUnlocked(ship, progress: updatedProgress)
             
             if isNowUnlocked {
                 newlyUnlocked.append(ship)

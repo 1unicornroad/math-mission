@@ -47,10 +47,7 @@ enum ArithmeticMode: String, CaseIterable {
     }
 
     var selectionScreenTitle: String {
-        switch self {
-        case .multiplication: return "SELECT TABLES"
-        case .division: return "SELECT DIVISORS"
-        }
+        "TABLES"
     }
 
     var selectionScreenSubtitle: String {
@@ -82,10 +79,37 @@ enum ArithmeticMode: String, CaseIterable {
     }
 
     var practiceBayTitle: String {
-        switch self {
-        case .multiplication: return "Practice Bay"
-        case .division: return "Division Bay"
+        "Custom Practice"
+    }
+}
+
+private struct MenuPracticeTile: View {
+    let title: String
+
+    var body: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 4) {
+                Text(title.uppercased())
+                    .font(.custom("Orbitron-Bold", size: 18))
+                    .foregroundColor(.white)
+                Text("CUSTOM SETUP")
+                    .font(.custom("Exo 2 SemiBold", size: 10))
+                    .foregroundColor(ArcadePalette.textMuted)
+                    .tracking(1.2)
+            }
+            Spacer()
         }
+        .frame(maxWidth: .infinity)
+        .frame(height: 68)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(ArcadePalette.panelBottom.opacity(0.82))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(ArcadePalette.coolLine.opacity(0.9), lineWidth: 1.0)
+        )
     }
 }
 
@@ -143,17 +167,24 @@ private struct ProfileHubView: View {
     }
 
     private var hubHeader: some View {
-        HStack(alignment: .center, spacing: 16) {
+        let rank = profileStore.activeRank
+        return HStack(alignment: .center, spacing: 16) {
             AvatarBadge(avatar: profileStore.activeAvatar, isSelected: false, size: 68)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(profileStore.activeDisplayName.uppercased())
                     .font(.custom("Orbitron-Bold", size: 30))
                     .foregroundColor(ArcadePalette.textPrimary)
-                Text(profileStore.isGuestActive ? "GUEST SESSION" : "PLAYER HUB")
+                Text(profileStore.isGuestActive ? "GUEST SESSION" : rank.title)
                     .font(.custom("Exo 2 SemiBold", size: 13))
                     .foregroundColor(profileStore.isGuestActive ? ArcadePalette.warning : ArcadePalette.signalBright)
                     .tracking(1.4)
+                if !profileStore.isGuestActive {
+                    Text(rank.detail)
+                        .font(.custom("Exo 2 SemiBold", size: 11))
+                        .foregroundColor(ArcadePalette.textSecondary)
+                        .tracking(0.9)
+                }
             }
 
             Spacer(minLength: 12)
@@ -728,18 +759,13 @@ struct MenuView: View {
     private func setupRevealScreen(containerHeight: CGFloat) -> some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 22) {
-                HStack(alignment: .top, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 0) {
                         Text(arithmeticMode.selectionScreenTitle)
                             .font(.custom("Orbitron-Bold", size: 32))
                             .foregroundColor(ArcadePalette.textPrimary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.9)
-                        
-                        Text(arithmeticMode.selectionScreenSubtitle)
-                            .font(.custom("Exo 2 SemiBold", size: 13))
-                            .foregroundColor(ArcadePalette.signalBright)
-                            .tracking(1.6)
                     }
 
                     Spacer(minLength: 12)
@@ -749,10 +775,6 @@ struct MenuView: View {
                 
                 ArcadePanel(accent: selectedTables.isEmpty ? ArcadePalette.coolLine : ArcadePalette.signal) {
                     VStack(alignment: .leading, spacing: 18) {
-                        MenuSubsectionHeader(
-                            title: arithmeticMode.subsectionTitle,
-                            detail: selectedTables.isEmpty ? arithmeticMode.subsectionDetailWhenEmpty : "\(selectedTables.count) Ready"
-                        )
 
                         ArithmeticModePicker(selection: $arithmeticMode)
                         
@@ -774,17 +796,14 @@ struct MenuView: View {
                                 }
                             }
                         }
+
+                        Button {
+                            AudioManager.shared.playButtonTap()
+                            showPracticeBay()
+                        } label: {
+                            MenuPracticeTile(title: arithmeticMode.practiceBayTitle)
+                        }
                     }
-                }
-                
-                Button {
-                    AudioManager.shared.playButtonTap()
-                    showPracticeBay()
-                } label: {
-                    MenuModeButton(
-                        title: arithmeticMode.practiceBayTitle,
-                        accent: ArcadePalette.coolLine
-                    )
                 }
                 
                 ViewThatFits(in: .horizontal) {
@@ -812,11 +831,6 @@ struct MenuView: View {
                     }
                 }
                 
-                Text(selectedTables.isEmpty ? arithmeticMode.readyStatusWhenEmpty : "HANGAR READY")
-                    .font(.custom("Exo 2 SemiBold", size: 12))
-                    .foregroundColor(selectedTables.isEmpty ? ArcadePalette.warning : ArcadePalette.success)
-                    .tracking(1.8)
-                    .opacity(signalBlink ? 1.0 : 0.45)
             }
             .frame(maxWidth: 720, alignment: .leading)
             .padding(.horizontal, 20)
@@ -850,22 +864,17 @@ struct MenuView: View {
     }
 
     private var playerHubButton: some View {
-        Button {
+        let rank = profileStore.activeRank
+        return Button {
             AudioManager.shared.playButtonTap()
             showingPlayerHub = true
         } label: {
             HStack(spacing: 10) {
                 AvatarBadge(avatar: profileStore.activeAvatar, isSelected: false, size: 42)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(profileStore.activeDisplayName.uppercased())
-                        .font(.custom("Orbitron-Bold", size: 12))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
-                    Text("PROFILE")
-                        .font(.custom("Exo 2 SemiBold", size: 10))
-                        .foregroundColor(ArcadePalette.textSecondary)
-                        .tracking(1.0)
-                }
+                Text(profileStore.isGuestActive ? "GUEST" : rank.title)
+                    .font(.custom("Exo 2 SemiBold", size: 10))
+                    .foregroundColor(ArcadePalette.textSecondary)
+                    .tracking(1.0)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)

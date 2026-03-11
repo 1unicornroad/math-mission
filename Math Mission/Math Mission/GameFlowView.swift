@@ -14,6 +14,7 @@ struct GameFlowView: View {
     let customProblems: [String]
     let difficulty: Difficulty
     let onExitToMenu: () -> Void
+    @StateObject private var profileStore = PlayerProfileStore.shared
     
     @State private var showingUnlockScreen = false
     @State private var newlyUnlockedShips: [SpaceShip] = []
@@ -137,16 +138,14 @@ struct GameFlowView: View {
     }
     
     func checkForUnlocks(meteorsDestroyed: Int, firstAttemptCorrect: Int, perfectProblems: [String: Int], selectedTables: [Int], arithmeticMode: ArithmeticMode, difficulty: Difficulty) -> [SpaceShip] {
-        let defaults = UserDefaults.standard
-        var previouslyCompletedTables = defaults.array(forKey: "completedTables") as? [Int] ?? []
-        var previouslyCompletedDifficulties = defaults.array(forKey: "completedDifficulties") as? [String] ?? []
+        var updatedProgress = profileStore.activeProgress
         
         var newlyUnlocked: [SpaceShip] = []
         
         // Check each selected table to see if all 12 multiples were answered perfectly TWICE
         if arithmeticMode == .multiplication {
             for table in selectedTables {
-                if previouslyCompletedTables.contains(table) {
+                if updatedProgress.completedTables.contains(table) {
                     continue  // Already completed
                 }
                 
@@ -164,7 +163,7 @@ struct GameFlowView: View {
                 }
                 
                 if completedAll {
-                    previouslyCompletedTables.append(table)
+                    updatedProgress.completedTables.append(table)
                 }
             }
         }
@@ -173,29 +172,16 @@ struct GameFlowView: View {
         // Mark difficulty as completed if player got 10+ perfect in medium/hard
         if firstAttemptCorrect >= 10 {
             let difficultyString = difficultyToString(difficulty)
-            if !previouslyCompletedDifficulties.contains(difficultyString) {
-                previouslyCompletedDifficulties.append(difficultyString)
+            if !updatedProgress.completedDifficulties.contains(difficultyString) {
+                updatedProgress.completedDifficulties.append(difficultyString)
             }
         }
         
-        // Save to UserDefaults
-        defaults.set(previouslyCompletedTables, forKey: "completedTables")
-        defaults.set(previouslyCompletedDifficulties, forKey: "completedDifficulties")
-        
         // Check which ships are newly unlocked
-        let allShips: [SpaceShip] = [
-            SpaceShip(name: "Nova Striker", modelName: "craft_speederA.dae", unlockRequirement: "Default", unlockLevel: 0),
-            SpaceShip(name: "Photon Blade", modelName: "craft_racer.dae", unlockRequirement: "Complete 2× table", unlockLevel: 1),
-            SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× and 4× tables", unlockLevel: 2),
-            SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× and 6× tables", unlockLevel: 3),
-            SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× and 8× tables", unlockLevel: 4),
-            SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 8× and 9× tables", unlockLevel: 5),
-            SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× and 12× tables", unlockLevel: 6),
-            SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium and Hard modes", unlockLevel: 7)
-        ]
+        let allShips = ShipCatalog.allShips
         
         // Get previously unlocked ships
-        let previouslyUnlockedShips = defaults.array(forKey: "previouslyUnlockedShips") as? [String] ?? ["craft_speederA.dae"]
+        let previouslyUnlockedShips = updatedProgress.unlockedShips
         var currentlyUnlockedShips = previouslyUnlockedShips
         
         for ship in allShips {
@@ -208,19 +194,22 @@ struct GameFlowView: View {
             case 0:
                 isNowUnlocked = true
             case 1:
-                isNowUnlocked = previouslyCompletedTables.contains(2)  // Just 2× table now
+                isNowUnlocked = updatedProgress.completedTables.contains(2)
             case 2:
-                isNowUnlocked = previouslyCompletedTables.contains(3) && previouslyCompletedTables.contains(4)
+                isNowUnlocked = updatedProgress.completedTables.contains(3) && updatedProgress.completedTables.contains(4)
             case 3:
-                isNowUnlocked = previouslyCompletedTables.contains(5) && previouslyCompletedTables.contains(6)
+                isNowUnlocked = updatedProgress.completedTables.contains(5) && updatedProgress.completedTables.contains(6)
             case 4:
-                isNowUnlocked = previouslyCompletedTables.contains(7) && previouslyCompletedTables.contains(8)
+                isNowUnlocked = updatedProgress.completedTables.contains(7) && updatedProgress.completedTables.contains(8)
             case 5:
-                isNowUnlocked = previouslyCompletedTables.contains(8) && previouslyCompletedTables.contains(9)
+                isNowUnlocked = (updatedProgress.completedTables.contains(8) && updatedProgress.completedTables.contains(9))
+                    || updatedProgress.lifetimeStars >= (ShipProgression.starRequirement(for: 5) ?? .max)
             case 6:
-                isNowUnlocked = previouslyCompletedTables.contains(11) && previouslyCompletedTables.contains(12)
+                isNowUnlocked = (updatedProgress.completedTables.contains(11) && updatedProgress.completedTables.contains(12))
+                    || updatedProgress.lifetimeStars >= (ShipProgression.starRequirement(for: 6) ?? .max)
             case 7:
-                isNowUnlocked = previouslyCompletedDifficulties.contains("medium") && previouslyCompletedDifficulties.contains("hard")
+                isNowUnlocked = (updatedProgress.completedDifficulties.contains("medium") && updatedProgress.completedDifficulties.contains("hard"))
+                    || updatedProgress.lifetimeStars >= (ShipProgression.starRequirement(for: 7) ?? .max)
             default:
                 isNowUnlocked = false
             }
@@ -230,9 +219,12 @@ struct GameFlowView: View {
                 currentlyUnlockedShips.append(ship.modelName)
             }
         }
-        
-        // Save updated unlocked ships
-        defaults.set(currentlyUnlockedShips, forKey: "previouslyUnlockedShips")
+        updatedProgress.completedTables = Array(Set(updatedProgress.completedTables)).sorted()
+        updatedProgress.completedDifficulties = Array(Set(updatedProgress.completedDifficulties)).sorted()
+        updatedProgress.unlockedShips = Array(Set(currentlyUnlockedShips)).sorted()
+        profileStore.updateProgress { progress in
+            progress = updatedProgress
+        }
         
         return newlyUnlocked
     }

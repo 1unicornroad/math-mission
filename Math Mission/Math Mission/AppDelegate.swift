@@ -7,6 +7,7 @@
 
 import UIKit
 import SwiftUI
+import SwiftData
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -21,6 +22,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Launch SwiftUI MenuView
         window = UIWindow(frame: UIScreen.main.bounds)
         let menuView = MenuView()
+            .modelContainer(PlayerProfileStore.shared.modelContainer)
         let hostingController = UIHostingController(rootView: menuView)
         window?.rootViewController = hostingController
         window?.makeKeyAndVisible()

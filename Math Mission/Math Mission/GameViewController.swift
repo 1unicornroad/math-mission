@@ -34,6 +34,13 @@ class GameViewController: UIViewController {
     var firstAttemptCorrect = 0
     var secondAttemptCorrect = 0
     var missedQuestions: [String] = []
+    var retryCandidateQuestions: [String] = []
+    var lastMissionReward: MissionStarReward?
+    var didPersistSessionStats = false
+    var tableAttempts: [Int: Int] = [:]
+    var tableFirstAttemptCorrect: [Int: Int] = [:]
+    var tableCorrectAnswers: [Int: Int] = [:]
+    var tableMisses: [Int: Int] = [:]
     
     // Track which specific problems were answered correctly on first attempt
     var perfectProblems: [String: Int] = [:]  // e.g. "3×4": 2 means answered perfectly twice
@@ -85,7 +92,7 @@ class GameViewController: UIViewController {
     let arcadeWarning = UIColor(red: 0.99, green: 0.74, blue: 0.24, alpha: 1.0)
     let arcadeDanger = UIColor(red: 0.93, green: 0.33, blue: 0.27, alpha: 1.0)
     let replayMasteryThreshold = 3
-    let missionQuestionLimit = 50
+    let missionQuestionLimit = 30
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -818,7 +825,7 @@ class GameViewController: UIViewController {
     
     func spawnMeteorWithQuestion() {
         guard !isEndingSession else { return }
-        guard questionNumber < missionQuestionLimit else {
+        guard isReplaySession || questionNumber < missionQuestionLimit else {
             completeMission()
             return
         }
@@ -833,6 +840,7 @@ class GameViewController: UIViewController {
         currentAnswer = answer
         currentQuestionText = question
         attemptsLeft = maxAttempts
+        recordPresentedQuestion(question)
         
         // Fade out question and buttons
         DispatchQueue.main.async {
@@ -941,6 +949,7 @@ class GameViewController: UIViewController {
             
             // Track statistics
             totalMeteorsDestroyed += 1
+            recordCorrectAnswer(for: currentQuestionText, firstTry: attemptsLeft == maxAttempts)
             if attemptsLeft == maxAttempts {
                 firstAttemptCorrect += 1
                 // Track this specific problem as perfect (format: "3×4")
@@ -966,7 +975,7 @@ class GameViewController: UIViewController {
                 guard !self.isEndingSession else { return }
                 if self.hasMasteredReplayProblemSet() {
                     self.completeReplaySession()
-                } else if self.questionNumber >= self.missionQuestionLimit {
+                } else if !self.isReplaySession && self.questionNumber >= self.missionQuestionLimit {
                     self.completeMission()
                 } else {
                     self.spawnMeteorWithQuestion()
@@ -974,6 +983,9 @@ class GameViewController: UIViewController {
             }
         } else {
             // Wrong answer
+            if difficulty == .easy {
+                markQuestionForRetryIfNeeded(currentQuestionText)
+            }
             styleAnswerButton(
                 sender,
                 accent: arcadeDanger,
@@ -986,6 +998,7 @@ class GameViewController: UIViewController {
             if attemptsLeft <= 0 {
                 // Track missed question
                 missedQuestions.append(currentQuestionText)
+                recordMiss(for: currentQuestionText)
                 // Hit by meteor
                 meteorHitsShip()
             }
@@ -1079,6 +1092,10 @@ class GameViewController: UIViewController {
         
         // Track missed question
         missedQuestions.append(currentQuestionText)
+        recordMiss(for: currentQuestionText)
+        if difficulty == .easy {
+            markQuestionForRetryIfNeeded(currentQuestionText)
+        }
         
         // Lose a life
         lives -= 1
@@ -1330,7 +1347,8 @@ class GameViewController: UIViewController {
 
         meteor?.removeAllActions()
         meteor?.removeFromParentNode()
-        questionLabel.text = "50 / 50"
+        lastMissionReward = PlayerProfileStore.shared.awardStars(calculateMissionStars())
+        questionLabel.text = "\(missionQuestionLimit) / \(missionQuestionLimit)"
         answerButtons.forEach { $0.isEnabled = false }
 
         UIView.animate(withDuration: 0.25) {
@@ -1346,6 +1364,7 @@ class GameViewController: UIViewController {
         
         DispatchQueue.main.async {
             guard self.gameOverOverlay == nil else { return }
+            self.persistSessionStatsIfNeeded()
             self.isEndingSession = false
             self.questionPanel.isHidden = true
             self.controlPanel.isHidden = true
@@ -1380,7 +1399,7 @@ class GameViewController: UIViewController {
             let missedTargets = Array(self.prioritizedMissedProblems().prefix(6))
             let hasReplay = !missedTargets.isEmpty
             let panelWidth = min(overlay.bounds.width - 36, 420)
-            let summaryHeight: CGFloat = 214
+            let summaryHeight: CGFloat = success ? 264 : 214
             let missedPanelHeight: CGFloat = hasReplay ? 148 : 0
             let reservedButtonHeight: CGFloat = hasReplay ? 124 : 60
             let contentHeight = summaryHeight + (hasReplay ? missedPanelHeight + 14 : 0) + 18 + reservedButtonHeight
@@ -1435,8 +1454,27 @@ class GameViewController: UIViewController {
             summaryPanel.addSubview(destroyedLabel)
             
             let statCardWidth = (summaryPanel.bounds.width - 46) / 2
+            if success, let reward = self.lastMissionReward {
+                let earnedStarsCard = self.createSummaryStatCard(
+                    frame: CGRect(x: 18, y: 162, width: statCardWidth, height: 34),
+                    title: "EARNED",
+                    value: "+\(reward.earned)",
+                    accent: self.arcadeWarning
+                )
+                summaryPanel.addSubview(earnedStarsCard)
+
+                let totalStarsCard = self.createSummaryStatCard(
+                    frame: CGRect(x: earnedStarsCard.frame.maxX + 10, y: 162, width: statCardWidth, height: 34),
+                    title: PlayerProfileStore.shared.isGuestActive ? "SESSION" : "TOTAL",
+                    value: "\(reward.newTotal)",
+                    accent: self.arcadeSignalBright
+                )
+                summaryPanel.addSubview(totalStarsCard)
+            }
+
+            let statsY: CGFloat = success ? 212 : 162
             let perfectCard = self.createSummaryStatCard(
-                frame: CGRect(x: 18, y: 162, width: statCardWidth, height: 34),
+                frame: CGRect(x: 18, y: statsY, width: statCardWidth, height: 34),
                 title: "PERFECT",
                 value: "\(self.firstAttemptCorrect)",
                 accent: self.arcadeSuccess
@@ -1444,7 +1482,7 @@ class GameViewController: UIViewController {
             summaryPanel.addSubview(perfectCard)
             
             let missedCard = self.createSummaryStatCard(
-                frame: CGRect(x: perfectCard.frame.maxX + 10, y: 162, width: statCardWidth, height: 34),
+                frame: CGRect(x: perfectCard.frame.maxX + 10, y: statsY, width: statCardWidth, height: 34),
                 title: "MISSED",
                 value: "\(self.missedQuestions.count)",
                 accent: self.arcadeDanger
@@ -1616,6 +1654,7 @@ class GameViewController: UIViewController {
         guard !didCompleteReplaySession else { return }
         didCompleteReplaySession = true
         isEndingSession = true
+        persistSessionStatsIfNeeded()
         
         meteor?.removeAllActions()
         meteor?.removeFromParentNode()
@@ -1702,7 +1741,8 @@ class GameViewController: UIViewController {
     
     func prioritizedMissedProblems() -> [(problem: String, count: Int)] {
         var counts: [String: Int] = [:]
-        for question in missedQuestions {
+        let replaySource = difficulty == .easy ? retryCandidateQuestions : missedQuestions
+        for question in replaySource {
             let normalized = normalizedProblemKey(from: question)
             counts[normalized, default: 0] += 1
         }
@@ -1748,8 +1788,89 @@ class GameViewController: UIViewController {
         guard !isEndingSession else { return }
         isEndingSession = true
         AudioManager.shared.playButtonTap()
-        let missedProblems = missedQuestions.map { normalizedProblemKey(from: $0) }
+        let replaySource = difficulty == .easy ? retryCandidateQuestions : missedQuestions
+        let missedProblems = replaySource.map { normalizedProblemKey(from: $0) }
         playAgainCallback?(missedProblems)
+    }
+
+    func markQuestionForRetryIfNeeded(_ question: String) {
+        let normalized = normalizedProblemKey(from: question)
+        let existing = Set(retryCandidateQuestions.map { normalizedProblemKey(from: $0) })
+        if !existing.contains(normalized) {
+            retryCandidateQuestions.append(question)
+        }
+    }
+
+    func calculateMissionStars() -> Int {
+        var stars = 10
+
+        if firstAttemptCorrect >= 24 { stars += 5 }
+        if firstAttemptCorrect >= 27 { stars += 3 }
+        if missedQuestions.count <= 2 { stars += 3 }
+        if missedQuestions.isEmpty { stars += 2 }
+        if topScore >= 10 { stars += 2 }
+
+        return stars
+    }
+
+    func recordPresentedQuestion(_ question: String) {
+        guard let tableNumber = tableNumber(for: question) else { return }
+        tableAttempts[tableNumber, default: 0] += 1
+    }
+
+    func recordCorrectAnswer(for question: String, firstTry: Bool) {
+        guard let tableNumber = tableNumber(for: question) else { return }
+        tableCorrectAnswers[tableNumber, default: 0] += 1
+        if firstTry {
+            tableFirstAttemptCorrect[tableNumber, default: 0] += 1
+        }
+    }
+
+    func recordMiss(for question: String) {
+        guard let tableNumber = tableNumber(for: question) else { return }
+        tableMisses[tableNumber, default: 0] += 1
+    }
+
+    func tableNumber(for question: String) -> Int? {
+        let compact = normalizedProblemKey(from: question)
+
+        if compact.contains("×") {
+            let parts = compact.split(separator: "×")
+            if parts.count == 2, let rhs = Int(parts[1]) {
+                return rhs
+            }
+        }
+
+        if compact.contains("÷") {
+            let parts = compact.split(separator: "÷")
+            if parts.count == 2, let rhs = Int(parts[1]) {
+                return rhs
+            }
+        }
+
+        return nil
+    }
+
+    func persistSessionStatsIfNeeded() {
+        guard !didPersistSessionStats else { return }
+        didPersistSessionStats = true
+
+        let update = PlayerSessionStatUpdate(
+            arithmeticMode: arithmeticMode,
+            totalCleared: totalMeteorsDestroyed,
+            bestStreak: topScore,
+            totalQuestionsSeen: totalMeteorsDestroyed + missedQuestions.count,
+            totalCorrectAnswers: totalMeteorsDestroyed,
+            totalFirstAttemptCorrect: firstAttemptCorrect,
+            totalMisses: missedQuestions.count,
+            didCompleteMission: didCompleteMission,
+            tableAttempts: tableAttempts,
+            tableFirstAttemptCorrect: tableFirstAttemptCorrect,
+            tableCorrectAnswers: tableCorrectAnswers,
+            tableMisses: tableMisses
+        )
+
+        PlayerProfileStore.shared.recordSession(update)
     }
     
     @objc func backToMenu() {

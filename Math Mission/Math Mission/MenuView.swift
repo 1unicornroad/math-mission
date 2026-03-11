@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 enum ArithmeticMode: String, CaseIterable {
     case multiplication
@@ -88,36 +89,406 @@ enum ArithmeticMode: String, CaseIterable {
     }
 }
 
+private struct ProfileHubView: View {
+    @ObservedObject var profileStore: PlayerProfileStore
+    let onChooseDifferentPilot: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var draftName = ""
+    @State private var draftAvatar: PlayerAvatar = .rocket
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                ArcadeBackground(variant: .quiet)
+                    .ignoresSafeArea()
+
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 22) {
+                        hubHeader
+
+                        if let profile = profileStore.activeProfile {
+                            recordsSection(profile: profile)
+                            unlockedShipsSection(profile: profile)
+                            performanceSection(title: "MULTIPLICATION TABLES", mode: .multiplication, profile: profile)
+                            performanceSection(title: "DIVISION TABLES", mode: .division, profile: profile)
+                            editProfileSection(profile: profile)
+                        } else {
+                            guestSection
+                        }
+                    }
+                    .frame(maxWidth: 820, alignment: .leading)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 28)
+                    .padding(.bottom, 34)
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.large])
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            syncDraftValues()
+        }
+        .onChange(of: profileStore.activeProfile?.id) { _, _ in
+            syncDraftValues()
+        }
+    }
+
+    private var hubHeader: some View {
+        HStack(alignment: .center, spacing: 16) {
+            AvatarBadge(avatar: profileStore.activeAvatar, isSelected: false, size: 68)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(profileStore.activeDisplayName.uppercased())
+                    .font(.custom("Orbitron-Bold", size: 30))
+                    .foregroundColor(ArcadePalette.textPrimary)
+                Text(profileStore.isGuestActive ? "GUEST SESSION" : "PLAYER HUB")
+                    .font(.custom("Exo 2 SemiBold", size: 13))
+                    .foregroundColor(profileStore.isGuestActive ? ArcadePalette.warning : ArcadePalette.signalBright)
+                    .tracking(1.4)
+            }
+
+            Spacer(minLength: 12)
+        }
+    }
+
+    private func recordsSection(profile: PlayerProfile) -> some View {
+        let summary = profileStore.recordSummary(for: profile)
+
+        return ArcadePanel(accent: ArcadePalette.coolLine) {
+            VStack(alignment: .leading, spacing: 16) {
+                sectionHeader("RECORDS")
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 2), spacing: 12) {
+                    statCard(title: "STARS", value: "\(summary.lifetimeStars)", accent: ArcadePalette.warning)
+                    statCard(title: "BEST STREAK", value: "\(summary.bestStreak)", accent: ArcadePalette.signalBright)
+                    statCard(title: "BEST RUN", value: "\(summary.bestRunCleared)", accent: ArcadePalette.success)
+                    statCard(title: "MISSIONS", value: "\(summary.missionsCompleted)", accent: ArcadePalette.coolLine)
+                    statCard(title: "RUNS", value: "\(summary.totalRuns)", accent: ArcadePalette.signal)
+                    statCard(title: "1ST TRY", value: "\(summary.firstAttemptAccuracy)%", accent: ArcadePalette.textSecondary)
+                }
+            }
+        }
+    }
+
+    private func unlockedShipsSection(profile: PlayerProfile) -> some View {
+        let unlockedShips = profileStore.unlockedShips(for: profile)
+
+        return ArcadePanel(accent: ArcadePalette.signal) {
+            VStack(alignment: .leading, spacing: 16) {
+                sectionHeader("UNLOCKED SHIPS")
+
+                if unlockedShips.isEmpty {
+                    Text("NO SHIPS UNLOCKED YET")
+                        .font(.custom("Exo 2 SemiBold", size: 13))
+                        .foregroundColor(ArcadePalette.textSecondary)
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 10)], spacing: 10) {
+                        ForEach(unlockedShips, id: \.modelName) { ship in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(ship.name.uppercased())
+                                    .font(.custom("Orbitron-Bold", size: 13))
+                                    .foregroundColor(.white)
+                                Text(ShipProgression.requirementText(for: ship).uppercased())
+                                    .font(.custom("Exo 2 SemiBold", size: 10))
+                                    .foregroundColor(ArcadePalette.textSecondary)
+                                    .lineLimit(2)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(ArcadePalette.panelBottom.opacity(0.9))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .stroke(ArcadePalette.panelLine, lineWidth: 1)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func performanceSection(title: String, mode: ArithmeticMode, profile: PlayerProfile) -> some View {
+        let summaries = profileStore.performanceSummaries(for: mode, profile: profile)
+
+        return ArcadePanel(accent: ArcadePalette.coolLine) {
+            VStack(alignment: .leading, spacing: 14) {
+                sectionHeader(title)
+
+                VStack(spacing: 10) {
+                    ForEach(summaries) { summary in
+                        HStack(spacing: 12) {
+                            Text(mode.tableSummary(for: summary.tableNumber))
+                                .font(.custom("Orbitron-Bold", size: 15))
+                                .foregroundColor(.white)
+                                .frame(width: 62, alignment: .leading)
+
+                            Text(summary.attempts == 0 ? "NO DATA" : "\(summary.accuracyPercentage)% FIRST TRY")
+                                .font(.custom("Exo 2 SemiBold", size: 12))
+                                .foregroundColor(summary.attempts == 0 ? ArcadePalette.textSecondary : ArcadePalette.signalBright)
+
+                            Spacer(minLength: 10)
+
+                            Text("\(summary.correctAnswers)/\(summary.attempts)")
+                                .font(.custom("Exo 2 SemiBold", size: 12))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(ArcadePalette.panelBottom.opacity(0.9))
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private func editProfileSection(profile: PlayerProfile) -> some View {
+        ArcadePanel(accent: ArcadePalette.signalBright) {
+            VStack(alignment: .leading, spacing: 16) {
+                sectionHeader("EDIT PROFILE")
+
+                TextField("Pilot name", text: Binding(
+                    get: { draftName },
+                    set: { draftName = String($0.prefix(20)) }
+                ))
+                .textInputAutocapitalization(.words)
+                .disableAutocorrection(true)
+                .font(.custom("Exo 2 SemiBold", size: 16))
+                .foregroundColor(.white)
+                .padding(.horizontal, 14)
+                .frame(height: 50)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(ArcadePalette.panelBottom.opacity(0.92))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(ArcadePalette.panelLine, lineWidth: 1)
+                )
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
+                    ForEach(PlayerAvatar.allCases, id: \.self) { avatar in
+                        Button {
+                            AudioManager.shared.playButtonTap()
+                            draftAvatar = avatar
+                        } label: {
+                            AvatarBadge(avatar: avatar, isSelected: draftAvatar == avatar, size: 52)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(ArcadePalette.panelBottom.opacity(0.92))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(draftAvatar == avatar ? ArcadePalette.signalBright : ArcadePalette.panelLine, lineWidth: draftAvatar == avatar ? 1.4 : 1)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                Button {
+                    AudioManager.shared.playButtonTap()
+                    profileStore.updateProfile(profile, name: draftName, avatar: draftAvatar)
+                    syncDraftValues()
+                } label: {
+                    ArcadePrimaryActionLabel(
+                        title: "Save Profile",
+                        enabled: !profileStore.sanitizedName(draftName).isEmpty
+                    )
+                }
+                .disabled(profileStore.sanitizedName(draftName).isEmpty)
+            }
+        }
+    }
+
+    private var guestSection: some View {
+        ArcadePanel(accent: ArcadePalette.warning) {
+            VStack(alignment: .leading, spacing: 16) {
+                sectionHeader("GUEST SESSION")
+
+                Text("GUEST PROGRESS ISN'T SAVED. PICK OR CREATE A PILOT TO TRACK STARS, SHIPS, RECORDS, AND TABLE PROGRESS.")
+                    .font(.custom("Exo 2 Medium", size: 13))
+                    .foregroundColor(ArcadePalette.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    AudioManager.shared.playButtonTap()
+                    dismiss()
+                    onChooseDifferentPilot()
+                } label: {
+                    ArcadePrimaryActionLabel(title: "Choose Pilot", enabled: true)
+                }
+            }
+        }
+    }
+
+    private func syncDraftValues() {
+        draftName = profileStore.activeProfile?.name ?? ""
+        draftAvatar = profileStore.activeProfile?.avatar ?? .rocket
+    }
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.custom("Orbitron-Bold", size: 18))
+            .foregroundColor(ArcadePalette.textPrimary)
+    }
+
+    private func statCard(title: String, value: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.custom("Exo 2 SemiBold", size: 11))
+                .foregroundColor(ArcadePalette.textSecondary)
+                .tracking(1.0)
+            Text(value)
+                .font(.custom("Orbitron-Bold", size: 24))
+                .foregroundColor(accent)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(ArcadePalette.panelBottom.opacity(0.92))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(ArcadePalette.panelLine, lineWidth: 1)
+        )
+    }
+}
+
+private struct PilotSelectionCard: View {
+    let title: String
+    let avatar: PlayerAvatar
+    let isSelected: Bool
+    var usesAccentSelection: Bool = true
+
+    var body: some View {
+        VStack(spacing: 12) {
+            AvatarBadge(
+                avatar: avatar,
+                isSelected: isSelected && usesAccentSelection,
+                size: 78
+            )
+            Text(title.uppercased())
+                .font(.custom("Orbitron-Bold", size: 16))
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(.vertical, 10)
+    }
+}
+
+private struct AddPilotCard: View {
+    let isExpanded: Bool
+
+    var body: some View {
+        VStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(ArcadePalette.panelBottom.opacity(0.92))
+                    .frame(width: 78, height: 78)
+                Circle()
+                    .stroke(isExpanded ? ArcadePalette.signalBright : ArcadePalette.panelLine, lineWidth: isExpanded ? 2 : 1)
+                    .frame(width: 78, height: 78)
+                Image(systemName: "plus")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(isExpanded ? ArcadePalette.signalBright : .white)
+            }
+            VStack(spacing: 4) {
+                Text("NEW PILOT")
+                    .font(.custom("Orbitron-Bold", size: 16))
+                    .foregroundColor(.white)
+            }
+        }
+        .padding(.vertical, 10)
+    }
+}
+
+private struct AvatarBadge: View {
+    let avatar: PlayerAvatar
+    let isSelected: Bool
+    let size: CGFloat
+
+    var body: some View {
+        Image(systemName: avatar.symbolName)
+            .font(.system(size: size * 0.38, weight: .bold))
+            .foregroundColor(.white)
+            .frame(width: size, height: size)
+            .background(
+                Circle()
+                    .fill(isSelected ? ArcadePalette.signal.opacity(0.9) : ArcadePalette.panelBottom.opacity(0.92))
+            )
+            .overlay(
+                Circle()
+                    .stroke(isSelected ? ArcadePalette.signalBright : ArcadePalette.panelLine, lineWidth: isSelected ? 2 : 1)
+            )
+    }
+}
+
+
 struct MenuView: View {
+    private enum MenuStage: Int {
+        case attract
+        case profile
+        case createPilot
+        case setup
+    }
+
+    @StateObject private var profileStore = PlayerProfileStore.shared
     @State private var selectedTables: Set<Int> = []
     @State private var selectedDifficulty: Difficulty = .easy
     @State private var arithmeticMode: ArithmeticMode = .multiplication
     @State private var showingShipSelection = false
     @State private var showingCustomPractice = false
-    @State private var isSetupRevealed = false
+    @State private var showingPlayerHub = false
+    @State private var currentStage: MenuStage = .attract
     @State private var startPromptPulse = false
     @State private var titlePulse = false
     @State private var signalBlink = false
     @State private var readyPulse = false
-    
+    @State private var newPlayerName = ""
+    @State private var selectedAvatar: PlayerAvatar = .rocket
+    @FocusState private var isNameFieldFocused: Bool
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
     
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                ArcadeBackground(variant: isSetupRevealed ? .quiet : .standard)
+                ArcadeBackground(variant: currentStage == .attract ? .standard : .quiet)
                 
                 VStack(spacing: 0) {
                     attractScreen(containerHeight: geometry.size.height)
+                    playerSelectionScreen(containerHeight: geometry.size.height)
+                    createPilotScreen(containerHeight: geometry.size.height)
                     setupRevealScreen(containerHeight: geometry.size.height)
                 }
                 .frame(maxWidth: .infinity, alignment: .top)
-                .offset(y: isSetupRevealed ? -geometry.size.height : 0)
+                .offset(y: -geometry.size.height * CGFloat(currentStage.rawValue))
                 .clipped()
             }
         }
         .buttonStyle(.plain)
-        .animation(.easeInOut(duration: 0.42), value: isSetupRevealed)
+        .animation(.easeInOut(duration: 0.42), value: currentStage)
         .onAppear {
             AudioManager.shared.startMenuMusic()
             restartAnimations()
@@ -142,7 +513,7 @@ struct MenuView: View {
                 restartAnimations()
             }
         }
-        .onChange(of: isSetupRevealed) { _, _ in
+        .onChange(of: currentStage) { _, _ in
             restartAnimations()
         }
         .fullScreenCover(isPresented: $showingShipSelection) {
@@ -153,7 +524,7 @@ struct MenuView: View {
                 isCustomMode: false,
                 onReturnToMenu: {
                     showingShipSelection = false
-                    revealSetup()
+                    showSetup()
                 }
             )
         }
@@ -162,6 +533,13 @@ struct MenuView: View {
                 arithmeticMode: arithmeticMode,
                 selectedDifficulty: $selectedDifficulty
             )
+        }
+        .sheet(isPresented: $showingPlayerHub) {
+            ProfileHubView(profileStore: profileStore) {
+                showingPlayerHub = false
+                showProfileSelection()
+            }
+            .modelContainer(PlayerProfileStore.shared.modelContainer)
         }
         .statusBar(hidden: true)
     }
@@ -189,7 +567,7 @@ struct MenuView: View {
             
             Button {
                 AudioManager.shared.playButtonTap()
-                revealSetup()
+                showProfileSelection()
             } label: {
                 Text("PRESS START")
                     .font(.custom("Orbitron-Bold", size: 24))
@@ -216,24 +594,156 @@ struct MenuView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             AudioManager.shared.playButtonTap()
-            revealSetup()
+            showProfileSelection()
+        }
+    }
+
+    private func playerSelectionScreen(containerHeight: CGFloat) -> some View {
+        VStack(spacing: 24) {
+            Spacer(minLength: 40)
+
+            Text("SELECT PILOT")
+                .font(.custom("Orbitron-Bold", size: 32))
+                .foregroundColor(ArcadePalette.textPrimary)
+
+            pilotStack
+
+            Button {
+                AudioManager.shared.playButtonTap()
+                showAttract()
+            } label: {
+                ArcadeSecondaryActionLabel(title: "Back")
+                    .frame(width: 148)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: 720)
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(height: containerHeight)
+    }
+
+    private func createPilotScreen(containerHeight: CGFloat) -> some View {
+        VStack(spacing: 22) {
+            Spacer(minLength: 40)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("CREATE PILOT")
+                    .font(.custom("Orbitron-Bold", size: 32))
+                    .foregroundColor(ArcadePalette.textPrimary)
+                Text("NAME YOUR PILOT AND CHOOSE AN AVATAR")
+                    .font(.custom("Exo 2 SemiBold", size: 13))
+                    .foregroundColor(ArcadePalette.signalBright)
+                    .tracking(1.4)
+            }
+            .frame(maxWidth: 520, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 18) {
+                TextField("Enter pilot name", text: Binding(
+                    get: { newPlayerName },
+                    set: { newPlayerName = String($0.prefix(20)) }
+                ))
+                .textInputAutocapitalization(.words)
+                .disableAutocorrection(true)
+                .font(.custom("Exo 2 SemiBold", size: 18))
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .frame(height: 54)
+                .focused($isNameFieldFocused)
+                .submitLabel(.done)
+                .onSubmit {
+                    isNameFieldFocused = false
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(ArcadePalette.panelBottom.opacity(0.92))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(ArcadePalette.panelLine, lineWidth: 1.0)
+                )
+
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 18), count: 3), spacing: 18) {
+                    ForEach(PlayerAvatar.allCases, id: \.self) { avatar in
+                        Button {
+                            AudioManager.shared.playButtonTap()
+                            selectedAvatar = avatar
+                        } label: {
+                            AvatarBadge(avatar: avatar, isSelected: selectedAvatar == avatar, size: 62)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                VStack(spacing: 12) {
+                    Button {
+                        AudioManager.shared.playButtonTap()
+                        createPilotAndContinue()
+                    } label: {
+                        ArcadePrimaryActionLabel(
+                            title: "Create Pilot",
+                            enabled: !profileStore.sanitizedName(newPlayerName).isEmpty
+                        )
+                    }
+                    .disabled(profileStore.sanitizedName(newPlayerName).isEmpty)
+
+                    Button {
+                        AudioManager.shared.playButtonTap()
+                        newPlayerName = ""
+                        selectedAvatar = .rocket
+                        showProfileSelection()
+                    } label: {
+                        ArcadeSecondaryActionLabel(title: "Back")
+                    }
+                }
+            }
+            .frame(maxWidth: 520)
+
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(height: containerHeight)
+    }
+    private var pilotStack: some View {
+        Group {
+            if horizontalSizeClass == .regular {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 28) {
+                        pilotButtons(fillWidth: false)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            } else {
+                VStack(spacing: 18) {
+                    pilotButtons(fillWidth: true)
+                }
+                .frame(maxWidth: .infinity)
+            }
         }
     }
     
     private func setupRevealScreen(containerHeight: CGFloat) -> some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 22) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(arithmeticMode.selectionScreenTitle)
-                        .font(.custom("Orbitron-Bold", size: 32))
-                        .foregroundColor(ArcadePalette.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.9)
-                    
-                    Text(arithmeticMode.selectionScreenSubtitle)
-                        .font(.custom("Exo 2 SemiBold", size: 13))
-                        .foregroundColor(ArcadePalette.signalBright)
-                        .tracking(1.6)
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(arithmeticMode.selectionScreenTitle)
+                            .font(.custom("Orbitron-Bold", size: 32))
+                            .foregroundColor(ArcadePalette.textPrimary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.9)
+                        
+                        Text(arithmeticMode.selectionScreenSubtitle)
+                            .font(.custom("Exo 2 SemiBold", size: 13))
+                            .foregroundColor(ArcadePalette.signalBright)
+                            .tracking(1.6)
+                    }
+
+                    Spacer(minLength: 12)
+                    playerHubButton
                 }
                 .padding(.horizontal, 4)
                 
@@ -281,7 +791,7 @@ struct MenuView: View {
                     HStack(spacing: 12) {
                         Button {
                             AudioManager.shared.playButtonTap()
-                            showAttract()
+                            showProfileSelection()
                         } label: {
                             ArcadeSecondaryActionLabel(title: "Back")
                         }
@@ -293,7 +803,7 @@ struct MenuView: View {
                     VStack(spacing: 12) {
                         Button {
                             AudioManager.shared.playButtonTap()
-                            showAttract()
+                            showProfileSelection()
                         } label: {
                             ArcadeSecondaryActionLabel(title: "Back")
                         }
@@ -338,17 +848,110 @@ struct MenuView: View {
         }
         .disabled(selectedTables.isEmpty)
     }
+
+    private var playerHubButton: some View {
+        Button {
+            AudioManager.shared.playButtonTap()
+            showingPlayerHub = true
+        } label: {
+            HStack(spacing: 10) {
+                AvatarBadge(avatar: profileStore.activeAvatar, isSelected: false, size: 42)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(profileStore.activeDisplayName.uppercased())
+                        .font(.custom("Orbitron-Bold", size: 12))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    Text("PROFILE")
+                        .font(.custom("Exo 2 SemiBold", size: 10))
+                        .foregroundColor(ArcadePalette.textSecondary)
+                        .tracking(1.0)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(ArcadePalette.panelBottom.opacity(0.92))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(ArcadePalette.panelLine, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
     
-    private func revealSetup() {
-        isSetupRevealed = true
+    private func showProfileSelection() {
+        currentStage = .profile
+    }
+
+    private func showCreatePilot() {
+        currentStage = .createPilot
+    }
+
+    private func showSetup() {
+        currentStage = .setup
     }
     
     private func showAttract() {
-        isSetupRevealed = false
+        currentStage = .attract
     }
     
     private func showPracticeBay() {
         showingCustomPractice = true
+    }
+
+    private func createPilotAndContinue() {
+        isNameFieldFocused = false
+        let cleanName = profileStore.sanitizedName(newPlayerName)
+        guard !cleanName.isEmpty else { return }
+        profileStore.createProfile(name: cleanName, avatar: selectedAvatar)
+        newPlayerName = ""
+        selectedAvatar = .rocket
+        showSetup()
+    }
+
+    @ViewBuilder
+    private func pilotButtons(fillWidth: Bool) -> some View {
+        ForEach(profileStore.profiles) { profile in
+            Button {
+                AudioManager.shared.playButtonTap()
+                profileStore.selectProfile(profile)
+                showSetup()
+            } label: {
+                PilotSelectionCard(
+                    title: profile.name,
+                    avatar: profile.avatar,
+                    isSelected: profileStore.activeProfile?.id == profile.id
+                )
+                .frame(maxWidth: fillWidth ? .infinity : nil)
+            }
+            .buttonStyle(.plain)
+        }
+
+        Button {
+            AudioManager.shared.playButtonTap()
+            showCreatePilot()
+        } label: {
+            AddPilotCard(isExpanded: currentStage == .createPilot)
+                .frame(maxWidth: fillWidth ? .infinity : nil)
+        }
+        .buttonStyle(.plain)
+
+        Button {
+            AudioManager.shared.playButtonTap()
+            profileStore.continueAsGuest()
+            showSetup()
+        } label: {
+            PilotSelectionCard(
+                title: "Guest",
+                avatar: .star,
+                isSelected: profileStore.isGuestActive,
+                usesAccentSelection: false
+            )
+            .frame(maxWidth: fillWidth ? .infinity : nil)
+        }
+        .buttonStyle(.plain)
     }
     
     private func restartAnimations() {

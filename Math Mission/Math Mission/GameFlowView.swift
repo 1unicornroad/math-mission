@@ -10,6 +10,7 @@ import SwiftUI
 struct GameFlowView: View {
     let selectedShipModel: String
     let selectedTables: [Int]
+    let arithmeticMode: ArithmeticMode
     let customProblems: [String]
     let difficulty: Difficulty
     let onExitToMenu: () -> Void
@@ -26,12 +27,14 @@ struct GameFlowView: View {
     init(
         selectedShipModel: String,
         selectedTables: [Int],
+        arithmeticMode: ArithmeticMode,
         customProblems: [String],
         difficulty: Difficulty,
         onExitToMenu: @escaping () -> Void
     ) {
         self.selectedShipModel = selectedShipModel
         self.selectedTables = selectedTables
+        self.arithmeticMode = arithmeticMode
         self.customProblems = customProblems
         self.difficulty = difficulty
         self.onExitToMenu = onExitToMenu
@@ -59,6 +62,7 @@ struct GameFlowView: View {
             GameViewControllerWrapper(
                 selectedShipModel: selectedShipModel,
                 selectedTables: selectedTables,
+                arithmeticMode: arithmeticMode,
                 customProblems: currentCustomProblems,
                 replayFocusProblems: replayFocusProblems,
                 isReplaySession: isReplaySession,
@@ -100,6 +104,7 @@ struct GameFlowView: View {
             firstAttemptCorrect: firstAttemptCorrect,
             perfectProblems: perfectProblems,
             selectedTables: selectedTables,
+            arithmeticMode: arithmeticMode,
             difficulty: difficulty
         )
         
@@ -131,7 +136,7 @@ struct GameFlowView: View {
         }
     }
     
-    func checkForUnlocks(meteorsDestroyed: Int, firstAttemptCorrect: Int, perfectProblems: [String: Int], selectedTables: [Int], difficulty: Difficulty) -> [SpaceShip] {
+    func checkForUnlocks(meteorsDestroyed: Int, firstAttemptCorrect: Int, perfectProblems: [String: Int], selectedTables: [Int], arithmeticMode: ArithmeticMode, difficulty: Difficulty) -> [SpaceShip] {
         let defaults = UserDefaults.standard
         var previouslyCompletedTables = defaults.array(forKey: "completedTables") as? [Int] ?? []
         var previouslyCompletedDifficulties = defaults.array(forKey: "completedDifficulties") as? [String] ?? []
@@ -139,30 +144,28 @@ struct GameFlowView: View {
         var newlyUnlocked: [SpaceShip] = []
         
         // Check each selected table to see if all 12 multiples were answered perfectly TWICE
-        for table in selectedTables {
-            if previouslyCompletedTables.contains(table) {
-                continue  // Already completed
-            }
-            
-            // Check if all 12 problems for this table were answered perfectly at least twice
-            var completedAll = true
-            for multiplier in 1...12 {
-                let problem1 = "\(multiplier)×\(table)"  // e.g. "3×4"
-                let problem2 = "\(table)×\(multiplier)"  // e.g. "4×3" (commutative)
-                
-                let count1 = perfectProblems[problem1] ?? 0
-                let count2 = perfectProblems[problem2] ?? 0
-                
-                // Need at least 2 perfect answers (can be either order or combination)
-                if count1 + count2 < 2 {
-                    completedAll = false
-                    break
+        if arithmeticMode == .multiplication {
+            for table in selectedTables {
+                if previouslyCompletedTables.contains(table) {
+                    continue  // Already completed
                 }
-            }
-            
-            // If all 12 problems for this table were perfect at least twice, mark it complete
-            if completedAll {
-                previouslyCompletedTables.append(table)
+                
+                var completedAll = true
+                for multiplier in 1...12 {
+                    let problem1 = "\(multiplier)×\(table)"
+                    let problem2 = "\(table)×\(multiplier)"
+                    let count1 = perfectProblems[problem1] ?? 0
+                    let count2 = perfectProblems[problem2] ?? 0
+                    
+                    if count1 + count2 < 2 {
+                        completedAll = false
+                        break
+                    }
+                }
+                
+                if completedAll {
+                    previouslyCompletedTables.append(table)
+                }
             }
         }
             
@@ -250,7 +253,7 @@ struct GameFlowView: View {
             baseProblems = selectedTables
                 .sorted()
                 .flatMap { table in
-                    (1...12).map { "\($0)×\(table)" }
+                    (1...12).map { arithmeticMode.practiceKey(lhs: $0, rhs: table) }
                 }
         }
 
@@ -271,6 +274,7 @@ struct GameFlowView: View {
 struct GameViewControllerWrapper: UIViewControllerRepresentable {
     let selectedShipModel: String
     let selectedTables: [Int]
+    let arithmeticMode: ArithmeticMode
     let customProblems: [String]
     let replayFocusProblems: [String]
     let isReplaySession: Bool
@@ -284,6 +288,7 @@ struct GameViewControllerWrapper: UIViewControllerRepresentable {
         let gameVC = GameViewController()
         gameVC.selectedShipModel = selectedShipModel
         gameVC.selectedTables = selectedTables
+        gameVC.arithmeticMode = arithmeticMode
         gameVC.customProblems = customProblems
         gameVC.replayFocusProblems = replayFocusProblems
         gameVC.isReplaySession = isReplaySession
@@ -310,6 +315,7 @@ struct GameViewControllerWrapper: UIViewControllerRepresentable {
     }
     
     func updateUIViewController(_ uiViewController: GameViewController, context: Context) {
+        uiViewController.arithmeticMode = arithmeticMode
         uiViewController.customProblems = customProblems
         uiViewController.replayFocusProblems = replayFocusProblems
         uiViewController.isReplaySession = isReplaySession

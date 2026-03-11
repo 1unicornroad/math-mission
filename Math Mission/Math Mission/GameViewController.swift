@@ -43,6 +43,7 @@ class GameViewController: UIViewController {
     var customProblems: [String] = []  // For custom mode like ["3×4", "5×7"]
     var replayFocusProblems: [String] = []
     var isReplaySession = false
+    var arithmeticMode: ArithmeticMode = .multiplication
     var difficulty: Difficulty = .easy
     var maxAttempts: Int = 2
     var selectedShipModel: String = "craft_speederA.dae"
@@ -743,16 +744,20 @@ class GameViewController: UIViewController {
         
         // Check if using custom problems
         if !customProblems.isEmpty {
-            // Select a random custom problem
-            let problemString = customProblems.randomElement() ?? "2×3"
-            let parts = problemString.split(separator: "×")
-            if parts.count == 2, let n1 = Int(parts[0]), let n2 = Int(parts[1]) {
-                num1 = n1
-                num2 = n2
-                answer = num1 * num2
-                question = "\(num1) × \(num2) = ?"
+            let problemString = customProblems.randomElement() ?? ArithmeticMode.multiplication.practiceKey(lhs: 2, rhs: 3)
+            if let customProblem = parsedProblem(from: problemString) {
+                num1 = customProblem.lhs
+                num2 = customProblem.rhs
+                switch customProblem.mode {
+                case .multiplication:
+                    answer = num1 * num2
+                    question = "\(num1) × \(num2) = ?"
+                case .division:
+                    let dividend = num1 * num2
+                    answer = num1
+                    question = "\(dividend) ÷ \(num2) = ?"
+                }
             } else {
-                // Fallback if parsing fails
                 num1 = 2
                 num2 = 3
                 answer = 6
@@ -761,13 +766,17 @@ class GameViewController: UIViewController {
         } else {
             // Keep generating until we get a different question
             repeat {
-                // Pick a random table from selected tables (this goes second)
                 num2 = selectedTables.randomElement() ?? 2
-                // Multiply by random number 1-12 (this goes first)
                 num1 = Int.random(in: 1...12)
-                answer = num1 * num2
-                // Format: random × selected_table (e.g., "10 × 3" for 3x table)
-                question = "\(num1) × \(num2) = ?"
+                switch arithmeticMode {
+                case .multiplication:
+                    answer = num1 * num2
+                    question = "\(num1) × \(num2) = ?"
+                case .division:
+                    let dividend = num1 * num2
+                    answer = num1
+                    question = "\(dividend) ÷ \(num2) = ?"
+                }
             } while question == lastQuestion
         }
         
@@ -786,6 +795,25 @@ class GameViewController: UIViewController {
         options.shuffle()
         
         return (question, answer, options)
+    }
+
+    private func parsedProblem(from problemString: String) -> (mode: ArithmeticMode, lhs: Int, rhs: Int)? {
+        let compactProblem = problemString.replacingOccurrences(of: " ", with: "")
+        if compactProblem.contains("×") {
+            let parts = compactProblem.split(separator: "×")
+            if parts.count == 2, let lhs = Int(parts[0]), let rhs = Int(parts[1]) {
+                return (.multiplication, lhs, rhs)
+            }
+        }
+
+        if compactProblem.contains("÷") {
+            let parts = compactProblem.split(separator: "÷")
+            if parts.count == 2, let lhs = Int(parts[0]), let rhs = Int(parts[1]) {
+                return (.division, lhs, rhs)
+            }
+        }
+
+        return nil
     }
     
     func spawnMeteorWithQuestion() {

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ShipSelectionView: View {
     let selectedTables: [Int]
+    let arithmeticMode: ArithmeticMode
     let isCustomMode: Bool
     var selectedProblems: [String] = []
     let onReturnToMenu: () -> Void
@@ -33,12 +34,14 @@ struct ShipSelectionView: View {
     
     init(
         selectedTables: [Int],
+        arithmeticMode: ArithmeticMode,
         selectedDifficulty: Binding<Difficulty>,
         isCustomMode: Bool,
         selectedProblems: [String] = [],
         onReturnToMenu: @escaping () -> Void = {}
     ) {
         self.selectedTables = selectedTables
+        self.arithmeticMode = arithmeticMode
         self.isCustomMode = isCustomMode
         self.selectedProblems = selectedProblems
         self.onReturnToMenu = onReturnToMenu
@@ -120,6 +123,7 @@ struct ShipSelectionView: View {
             GameFlowView(
                 selectedShipModel: selectedShip.modelName,
                 selectedTables: selectedTables,
+                arithmeticMode: arithmeticMode,
                 customProblems: selectedProblems,
                 difficulty: selectedDifficulty,
                 onExitToMenu: returnToTopLevelMenu
@@ -182,13 +186,15 @@ struct ShipSelectionView: View {
     
     private var hangarSummary: String {
         if isCustomMode {
-            return "\(selectedProblems.count) TARGETS"
+            return arithmeticMode == .multiplication
+                ? "\(selectedProblems.count) TARGETS"
+                : "\(selectedProblems.count) DIVISION TARGETS"
         }
         
         guard !selectedTables.isEmpty else { return "NO TABLES" }
         return selectedTables
             .sorted()
-            .map { "\($0)×" }
+            .map { arithmeticMode.tableSummary(for: $0) }
             .joined(separator: " • ")
     }
     

@@ -8,6 +8,7 @@
 import SwiftUI
 
 struct CustomPracticeView: View {
+    let arithmeticMode: ArithmeticMode
     @Binding var selectedDifficulty: Difficulty
     let onClose: (() -> Void)?
     
@@ -16,9 +17,11 @@ struct CustomPracticeView: View {
     @Environment(\.dismiss) private var dismiss
     
     init(
+        arithmeticMode: ArithmeticMode,
         selectedDifficulty: Binding<Difficulty>,
         onClose: (() -> Void)? = nil
     ) {
+        self.arithmeticMode = arithmeticMode
         self._selectedDifficulty = selectedDifficulty
         self.onClose = onClose
     }
@@ -49,6 +52,7 @@ struct CustomPracticeView: View {
                                 ForEach(1...12, id: \.self) { table in
                                     PracticeGridSection(
                                         table: table,
+                                        arithmeticMode: arithmeticMode,
                                         columns: gridColumns(for: geometry.size.width),
                                         selectedProblems: $selectedProblems
                                     )
@@ -69,6 +73,7 @@ struct CustomPracticeView: View {
         .fullScreenCover(isPresented: $showingShipSelection) {
             ShipSelectionView(
                 selectedTables: [],
+                arithmeticMode: arithmeticMode,
                 selectedDifficulty: $selectedDifficulty,
                 isCustomMode: true,
                 selectedProblems: Array(selectedProblems),
@@ -85,7 +90,12 @@ struct CustomPracticeView: View {
     
     private var practiceStatus: String {
         if selectedProblems.isEmpty {
-            return "PICK TARGETS"
+            switch arithmeticMode {
+            case .multiplication:
+                return "PICK TARGETS"
+            case .division:
+                return "PICK DIVISION FACTS"
+            }
         }
         
         return "\(selectedProblems.count) TARGETS"
@@ -162,16 +172,18 @@ struct CustomPracticeView: View {
             dismiss()
         }
     }
+
 }
 
 private struct PracticeGridSection: View {
     let table: Int
+    let arithmeticMode: ArithmeticMode
     let columns: [GridItem]
     @Binding var selectedProblems: Set<String>
     
     var body: some View {
         VStack(spacing: 10) {
-            Text("\(table)× TABLE")
+            Text(sectionTitle)
                 .font(.custom("Orbitron-Medium", size: 19))
                 .foregroundColor(ArcadePalette.signalBright)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -179,7 +191,7 @@ private struct PracticeGridSection: View {
             
             LazyVGrid(columns: columns, spacing: 10) {
                 ForEach(1...12, id: \.self) { multiplier in
-                    let problemKey = "\(multiplier)×\(table)"
+                    let problemKey = arithmeticMode.practiceKey(lhs: multiplier, rhs: table)
                     Button {
                         AudioManager.shared.playButtonTap()
                         if selectedProblems.contains(problemKey) {
@@ -212,6 +224,15 @@ private struct PracticeGridSection: View {
                     .buttonStyle(.plain)
                 }
             }
+        }
+    }
+
+    private var sectionTitle: String {
+        switch arithmeticMode {
+        case .multiplication:
+            return "\(table)× TABLE"
+        case .division:
+            return "÷\(table) FACTS"
         }
     }
 }

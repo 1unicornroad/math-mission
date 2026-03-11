@@ -7,9 +7,91 @@
 
 import SwiftUI
 
+enum ArithmeticMode: String, CaseIterable {
+    case multiplication
+    case division
+
+    var title: String {
+        switch self {
+        case .multiplication: return "Multiplication"
+        case .division: return "Division"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .multiplication: return "×"
+        case .division: return "÷"
+        }
+    }
+
+    var tileLabel: String {
+        switch self {
+        case .multiplication: return "TABLE"
+        case .division: return "FACTS"
+        }
+    }
+
+    func tableSummary(for table: Int) -> String {
+        switch self {
+        case .multiplication:
+            return "\(table)\(symbol)"
+        case .division:
+            return "÷\(table)"
+        }
+    }
+
+    func practiceKey(lhs: Int, rhs: Int) -> String {
+        "\(lhs)\(symbol)\(rhs)"
+    }
+
+    var selectionScreenTitle: String {
+        switch self {
+        case .multiplication: return "SELECT TABLES"
+        case .division: return "SELECT DIVISORS"
+        }
+    }
+
+    var selectionScreenSubtitle: String {
+        switch self {
+        case .multiplication: return "OR HIT PRACTICE BAY"
+        case .division: return "OR BUILD CUSTOM QUOTIENT DRILLS"
+        }
+    }
+
+    var subsectionTitle: String {
+        switch self {
+        case .multiplication: return "Tables"
+        case .division: return "Divisors"
+        }
+    }
+
+    var subsectionDetailWhenEmpty: String {
+        switch self {
+        case .multiplication: return "Pick Some"
+        case .division: return "Pick Divisors"
+        }
+    }
+
+    var readyStatusWhenEmpty: String {
+        switch self {
+        case .multiplication: return "PICK TABLES OR HIT PRACTICE"
+        case .division: return "PICK DIVISORS OR HIT PRACTICE"
+        }
+    }
+
+    var practiceBayTitle: String {
+        switch self {
+        case .multiplication: return "Practice Bay"
+        case .division: return "Division Bay"
+        }
+    }
+}
+
 struct MenuView: View {
     @State private var selectedTables: Set<Int> = []
     @State private var selectedDifficulty: Difficulty = .easy
+    @State private var arithmeticMode: ArithmeticMode = .multiplication
     @State private var showingShipSelection = false
     @State private var showingCustomPractice = false
     @State private var isSetupRevealed = false
@@ -66,6 +148,7 @@ struct MenuView: View {
         .fullScreenCover(isPresented: $showingShipSelection) {
             ShipSelectionView(
                 selectedTables: selectedTables.sorted(),
+                arithmeticMode: arithmeticMode,
                 selectedDifficulty: $selectedDifficulty,
                 isCustomMode: false,
                 onReturnToMenu: {
@@ -75,7 +158,10 @@ struct MenuView: View {
             )
         }
         .fullScreenCover(isPresented: $showingCustomPractice) {
-            CustomPracticeView(selectedDifficulty: $selectedDifficulty)
+            CustomPracticeView(
+                arithmeticMode: arithmeticMode,
+                selectedDifficulty: $selectedDifficulty
+            )
         }
         .statusBar(hidden: true)
     }
@@ -138,11 +224,13 @@ struct MenuView: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 22) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("SELECT TABLES")
-                        .font(.custom("Orbitron-Bold", size: 34))
+                    Text(arithmeticMode.selectionScreenTitle)
+                        .font(.custom("Orbitron-Bold", size: 32))
                         .foregroundColor(ArcadePalette.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.9)
                     
-                    Text("OR HIT PRACTICE BAY")
+                    Text(arithmeticMode.selectionScreenSubtitle)
                         .font(.custom("Exo 2 SemiBold", size: 13))
                         .foregroundColor(ArcadePalette.signalBright)
                         .tracking(1.6)
@@ -152,9 +240,11 @@ struct MenuView: View {
                 ArcadePanel(accent: selectedTables.isEmpty ? ArcadePalette.coolLine : ArcadePalette.signal) {
                     VStack(alignment: .leading, spacing: 18) {
                         MenuSubsectionHeader(
-                            title: "Tables",
-                            detail: selectedTables.isEmpty ? "Pick Some" : "\(selectedTables.count) Ready"
+                            title: arithmeticMode.subsectionTitle,
+                            detail: selectedTables.isEmpty ? arithmeticMode.subsectionDetailWhenEmpty : "\(selectedTables.count) Ready"
                         )
+
+                        ArithmeticModePicker(selection: $arithmeticMode)
                         
                         LazyVGrid(columns: columns, spacing: 10) {
                             ForEach(1...12, id: \.self) { number in
@@ -168,6 +258,7 @@ struct MenuView: View {
                                 } label: {
                                     MenuTableTile(
                                         number: number,
+                                        arithmeticMode: arithmeticMode,
                                         isSelected: selectedTables.contains(number)
                                     )
                                 }
@@ -181,7 +272,7 @@ struct MenuView: View {
                     showPracticeBay()
                 } label: {
                     MenuModeButton(
-                        title: "Practice Bay",
+                        title: arithmeticMode.practiceBayTitle,
                         accent: ArcadePalette.coolLine
                     )
                 }
@@ -211,7 +302,7 @@ struct MenuView: View {
                     }
                 }
                 
-                Text(selectedTables.isEmpty ? "PICK TABLES OR HIT PRACTICE" : "HANGAR READY")
+                Text(selectedTables.isEmpty ? arithmeticMode.readyStatusWhenEmpty : "HANGAR READY")
                     .font(.custom("Exo 2 SemiBold", size: 12))
                     .foregroundColor(selectedTables.isEmpty ? ArcadePalette.warning : ArcadePalette.success)
                     .tracking(1.8)
@@ -318,6 +409,46 @@ private struct MenuModeButton: View {
     }
 }
 
+private struct ArithmeticModePicker: View {
+    @Binding var selection: ArithmeticMode
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(ArithmeticMode.allCases, id: \.self) { mode in
+                Button {
+                    AudioManager.shared.playButtonTap()
+                    selection = mode
+                } label: {
+                    Text(mode.title.uppercased())
+                        .font(.custom("Exo 2 SemiBold", size: 12))
+                        .foregroundColor(.white)
+                        .tracking(1.0)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 42)
+                        .background(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .fill(
+                                    selection == mode
+                                        ? ArcadePalette.signal.opacity(0.86)
+                                        : ArcadePalette.panelBottom.opacity(0.92)
+                                )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                .stroke(
+                                    selection == mode
+                                        ? ArcadePalette.signalBright
+                                        : ArcadePalette.panelLine.opacity(0.85),
+                                    lineWidth: selection == mode ? 1.5 : 1.0
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
 private struct MenuSubsectionHeader: View {
     let title: String
     let detail: String
@@ -410,14 +541,15 @@ extension Difficulty {
 
 private struct MenuTableTile: View {
     let number: Int
+    let arithmeticMode: ArithmeticMode
     let isSelected: Bool
     
     var body: some View {
         VStack(spacing: 4) {
-            Text("\(number)×")
+            Text(arithmeticMode.tableSummary(for: number))
                 .font(.custom("Orbitron-Bold", size: 22))
                 .foregroundColor(.white)
-            Text("TABLE")
+            Text(arithmeticMode.tileLabel)
                 .font(.custom("Exo 2 SemiBold", size: 10))
                 .foregroundColor(isSelected ? Color.white.opacity(0.76) : ArcadePalette.textMuted)
                 .tracking(1.2)

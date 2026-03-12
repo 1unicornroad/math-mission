@@ -47,6 +47,14 @@ class GameViewController: UIViewController {
     var tableCorrectAnswers: [Int: Int] = [:]
     var tableMisses: [Int: Int] = [:]
     var activeStarRewardTimers: [Timer] = []
+    let malfunctionTriggerWaves: Set<Int> = [15, 20]
+    let repairStarAward = 3
+    var triggeredMalfunctionWaves: Set<Int> = []
+    var isInMalfunctionMode = false
+    var repairPromptQuestion = ""
+    var repairAnswer = 0
+    var repairInput = ""
+    var repairStarsEarned = 0
     
     // Track which specific problems were answered correctly on first attempt
     var perfectProblems: [String: Int] = [:]  // e.g. "3×4": 2 means answered perfectly twice
@@ -82,6 +90,14 @@ class GameViewController: UIViewController {
     var statusPanel: UIView!
     var controlPanel: UIView!
     var gameOverOverlay: UIView?
+    var malfunctionOverlay: UIView!
+    var malfunctionTitleLabel: UILabel!
+    var malfunctionStatusLabel: UILabel!
+    var repairPromptLabel: UILabel!
+    var repairInputLabel: UILabel!
+    var systemsRestoredLabel: UILabel!
+    var repairKeypadButtons: [UIButton] = []
+    var repairConfirmButton: UIButton!
     
     // Callback for game over
     var gameOverCallback: ((Int, Int, [String: Int]) -> Void)?
@@ -627,6 +643,7 @@ class GameViewController: UIViewController {
         
         layoutGameplayHUD()
         setupLivesDisplay()
+        setupMalfunctionOverlay()
     }
     
     func layoutGameplayHUD() {
@@ -685,6 +702,7 @@ class GameViewController: UIViewController {
         questionLabel.frame = CGRect(x: 18, y: 24, width: questionPanel.bounds.width - 36, height: 60)
         
         layoutAnswerButtons(for: difficulty == .hard ? 4 : 3)
+        layoutMalfunctionOverlay()
     }
     
     func layoutAnswerButtons(for optionCount: Int) {
@@ -705,6 +723,164 @@ class GameViewController: UIViewController {
                 height: buttonHeight
             )
         }
+    }
+
+    func setupMalfunctionOverlay() {
+        malfunctionOverlay = UIView(frame: .zero)
+        malfunctionOverlay.alpha = 0
+        malfunctionOverlay.isHidden = true
+        applyArcadePanelStyle(
+            to: malfunctionOverlay,
+            accent: arcadeDanger,
+            fillColors: [arcadePanelSoft, UIColor.black.withAlphaComponent(0.95)],
+            cornerCut: 24
+        )
+        view.addSubview(malfunctionOverlay)
+
+        malfunctionTitleLabel = UILabel(frame: .zero)
+        malfunctionTitleLabel.text = "RED ALERT"
+        malfunctionTitleLabel.font = UIFont.orbitronBold(size: 28)
+        malfunctionTitleLabel.textColor = arcadeDanger
+        malfunctionTitleLabel.textAlignment = .center
+        malfunctionOverlay.addSubview(malfunctionTitleLabel)
+
+        malfunctionStatusLabel = UILabel(frame: .zero)
+        malfunctionStatusLabel.text = "SHIP MALFUNCTION"
+        malfunctionStatusLabel.font = UIFont.exo2SemiBold(size: 13)
+        malfunctionStatusLabel.textColor = .white
+        malfunctionStatusLabel.textAlignment = .center
+        malfunctionOverlay.addSubview(malfunctionStatusLabel)
+
+        repairPromptLabel = UILabel(frame: .zero)
+        repairPromptLabel.font = UIFont.orbitronBold(size: 30)
+        repairPromptLabel.textColor = arcadeSignalBright
+        repairPromptLabel.textAlignment = .center
+        repairPromptLabel.adjustsFontSizeToFitWidth = true
+        repairPromptLabel.minimumScaleFactor = 0.7
+        malfunctionOverlay.addSubview(repairPromptLabel)
+
+        repairInputLabel = UILabel(frame: .zero)
+        repairInputLabel.font = UIFont.orbitronBold(size: 32)
+        repairInputLabel.textColor = arcadeSignalBright
+        repairInputLabel.textAlignment = .center
+        repairInputLabel.text = "?"
+        repairInputLabel.alpha = 0
+        malfunctionOverlay.addSubview(repairInputLabel)
+
+        systemsRestoredLabel = UILabel(frame: .zero)
+        systemsRestoredLabel.font = UIFont.orbitronBold(size: 24)
+        systemsRestoredLabel.textColor = arcadeSuccess
+        systemsRestoredLabel.textAlignment = .center
+        systemsRestoredLabel.text = "SYSTEMS RESTORED"
+        systemsRestoredLabel.alpha = 0
+        malfunctionOverlay.addSubview(systemsRestoredLabel)
+
+        let keypadTitles = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "⌫"]
+        for title in keypadTitles {
+            let button = UIButton(type: .system)
+            applyArcadePanelStyle(
+                to: button,
+                accent: title == "⌫" ? arcadeDanger : arcadeCool,
+                fillColors: [arcadePanelSoft, arcadePanel],
+                cornerCut: 16
+            )
+            button.setTitle(title, for: .normal)
+            button.setTitleColor(.white, for: .normal)
+            button.titleLabel?.font = UIFont.orbitronBold(size: 28)
+            button.addTarget(self, action: #selector(repairKeyTapped(_:)), for: .touchUpInside)
+            malfunctionOverlay.addSubview(button)
+            repairKeypadButtons.append(button)
+        }
+
+        repairConfirmButton = UIButton(type: .system)
+        applyArcadePanelStyle(
+            to: repairConfirmButton,
+            accent: arcadeDanger,
+            fillColors: [arcadeDanger.withAlphaComponent(0.92), arcadeSignal.withAlphaComponent(0.78)],
+            cornerCut: 18
+        )
+        repairConfirmButton.setTitle("FIX SHIP", for: .normal)
+        repairConfirmButton.setTitleColor(.white, for: .normal)
+        repairConfirmButton.titleLabel?.font = UIFont.orbitronBold(size: 24)
+        repairConfirmButton.addTarget(self, action: #selector(confirmRepairAttempt), for: .touchUpInside)
+        malfunctionOverlay.addSubview(repairConfirmButton)
+    }
+
+    func layoutMalfunctionOverlay() {
+        guard malfunctionOverlay != nil else { return }
+
+        let top = questionPanel?.frame.minY ?? 0
+        let bottom = controlPanel?.frame.maxY ?? view.bounds.height
+        malfunctionOverlay.frame = CGRect(x: 16, y: top, width: view.bounds.width - 32, height: bottom - top)
+        applyArcadePanelStyle(
+            to: malfunctionOverlay,
+            accent: arcadeDanger,
+            fillColors: [arcadePanelSoft, UIColor.black.withAlphaComponent(0.95)],
+            cornerCut: 24
+        )
+
+        malfunctionTitleLabel.frame = CGRect(x: 18, y: 18, width: malfunctionOverlay.bounds.width - 36, height: 34)
+        malfunctionStatusLabel.frame = CGRect(x: 18, y: 54, width: malfunctionOverlay.bounds.width - 36, height: 18)
+        repairPromptLabel.frame = CGRect(x: 18, y: 86, width: malfunctionOverlay.bounds.width - 36, height: 42)
+        repairInputLabel.frame = CGRect(x: 18, y: 132, width: malfunctionOverlay.bounds.width - 36, height: 40)
+        systemsRestoredLabel.frame = CGRect(x: 18, y: 132, width: malfunctionOverlay.bounds.width - 36, height: 40)
+
+        let keypadTop: CGFloat = 188
+        let horizontalPadding: CGFloat = 28
+        let keypadSpacing: CGFloat = 12
+        let buttonWidth = (malfunctionOverlay.bounds.width - horizontalPadding * 2 - keypadSpacing * 2) / 3
+        let buttonHeight: CGFloat = 54
+
+        for (index, button) in repairKeypadButtons.enumerated() {
+            if index < 9 {
+                let row = index / 3
+                let column = index % 3
+                button.frame = CGRect(
+                    x: horizontalPadding + CGFloat(column) * (buttonWidth + keypadSpacing),
+                    y: keypadTop + CGFloat(row) * (buttonHeight + keypadSpacing),
+                    width: buttonWidth,
+                    height: buttonHeight
+                )
+            } else if index == 9 {
+                button.frame = CGRect(
+                    x: horizontalPadding + buttonWidth + keypadSpacing,
+                    y: keypadTop + 3 * (buttonHeight + keypadSpacing),
+                    width: buttonWidth,
+                    height: buttonHeight
+                )
+            } else {
+                button.frame = CGRect(
+                    x: horizontalPadding + 2 * (buttonWidth + keypadSpacing),
+                    y: keypadTop + 3 * (buttonHeight + keypadSpacing),
+                    width: buttonWidth,
+                    height: buttonHeight
+                )
+            }
+
+            applyArcadePanelStyle(
+                to: button,
+                accent: button.title(for: .normal) == "⌫" ? arcadeDanger : arcadeCool,
+                fillColors: [arcadePanelSoft, arcadePanel],
+                cornerCut: 16
+            )
+            button.setTitleColor(.white, for: .normal)
+            button.titleLabel?.font = UIFont.orbitronBold(size: 28)
+        }
+
+        repairConfirmButton.frame = CGRect(
+            x: horizontalPadding,
+            y: keypadTop + 4 * (buttonHeight + keypadSpacing) + 4,
+            width: malfunctionOverlay.bounds.width - horizontalPadding * 2,
+            height: 62
+        )
+        applyArcadePanelStyle(
+            to: repairConfirmButton,
+            accent: arcadeDanger,
+            fillColors: [arcadeDanger.withAlphaComponent(0.92), arcadeSignal.withAlphaComponent(0.78)],
+            cornerCut: 18
+        )
+        repairConfirmButton.setTitleColor(.white, for: .normal)
+        repairConfirmButton.titleLabel?.font = UIFont.orbitronBold(size: 24)
     }
     
     func setupLivesDisplay() {
@@ -830,9 +1006,171 @@ class GameViewController: UIViewController {
 
         return nil
     }
+
+    func generateRepairQuestion() -> (question: String, answer: Int) {
+        let prompt = generateMathQuestion()
+        return (prompt.question, prompt.answer)
+    }
+
+    func shouldTriggerMalfunctionAfterCurrentWave() -> Bool {
+        guard !isReplaySession else { return false }
+        guard malfunctionTriggerWaves.contains(totalMeteorsDestroyed) else { return false }
+        return !triggeredMalfunctionWaves.contains(totalMeteorsDestroyed)
+    }
+
+    func beginMalfunctionSequence() {
+        guard !isInMalfunctionMode else { return }
+
+        isInMalfunctionMode = true
+        triggeredMalfunctionWaves.insert(totalMeteorsDestroyed)
+        meteor?.removeAllActions()
+        meteor?.removeFromParentNode()
+        answerButtons.forEach {
+            $0.isEnabled = false
+            $0.alpha = 0
+        }
+        updateRepairPrompt()
+        malfunctionOverlay.isHidden = false
+        malfunctionOverlay.alpha = 0
+        addArcadeBlinkAnimation(to: malfunctionTitleLabel, minimumOpacity: 0.2, duration: 0.4)
+        addArcadeBlinkAnimation(to: repairConfirmButton, minimumOpacity: 0.45, duration: 0.45)
+        startMalfunctionShipWeave()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            guard self.isInMalfunctionMode else { return }
+            self.questionPanel.alpha = 0
+            self.controlPanel.alpha = 0
+            UIView.animate(withDuration: 0.25) {
+                self.malfunctionOverlay.alpha = 1.0
+            }
+        }
+    }
+
+    func endMalfunctionSequence() {
+        isInMalfunctionMode = false
+        malfunctionTitleLabel.layer.removeAnimation(forKey: "arcade.blink")
+        repairConfirmButton.layer.removeAnimation(forKey: "arcade.blink")
+        stopMalfunctionShipWeave()
+        malfunctionOverlay.backgroundColor = .clear
+        repairPromptLabel.alpha = 1.0
+        spaceship.enumerateChildNodes { node, _ in
+            node.geometry?.firstMaterial?.emission.contents = UIColor.black
+        }
+        UIView.animate(withDuration: 0.25, animations: {
+            self.malfunctionOverlay.alpha = 0
+        }) { _ in
+            self.malfunctionOverlay.isHidden = true
+            self.questionPanel.alpha = 1.0
+            self.controlPanel.alpha = 1.0
+            self.spawnMeteorWithQuestion()
+        }
+    }
+
+    func updateRepairPrompt() {
+        let prompt = generateRepairQuestion()
+        repairPromptQuestion = prompt.question
+        repairAnswer = prompt.answer
+        repairInput = ""
+        systemsRestoredLabel.alpha = 0
+        updateRepairEquationDisplay()
+        repairInputLabel.text = "?"
+    }
+
+    func awardRepairStars() {
+        repairStarsEarned += repairStarAward
+        _ = PlayerProfileStore.shared.awardStars(repairStarAward)
+    }
+
+    @objc func repairKeyTapped(_ sender: UIButton) {
+        guard isInMalfunctionMode else { return }
+        guard let title = sender.title(for: .normal) else { return }
+
+        switch title {
+        case "⌫":
+            if !repairInput.isEmpty {
+                repairInput.removeLast()
+            }
+        default:
+            guard repairInput.count < 3 else { break }
+            repairInput.append(title)
+        }
+
+        updateRepairEquationDisplay()
+    }
+
+    @objc func confirmRepairAttempt() {
+        guard isInMalfunctionMode else { return }
+        guard let enteredValue = Int(repairInput) else {
+            updateRepairEquationDisplay()
+            return
+        }
+
+        if enteredValue == repairAnswer {
+            awardRepairStars()
+            repairPromptLabel.alpha = 0
+            systemsRestoredLabel.alpha = 0
+            UIView.animate(withDuration: 0.18, animations: {
+                self.systemsRestoredLabel.alpha = 1.0
+                self.systemsRestoredLabel.transform = CGAffineTransform(scaleX: 1.05, y: 1.05)
+                self.malfunctionOverlay.backgroundColor = self.arcadeSuccess.withAlphaComponent(0.12)
+            }) { _ in
+                UIView.animate(withDuration: 0.18) {
+                    self.systemsRestoredLabel.transform = .identity
+                }
+            }
+            spaceship.enumerateChildNodes { node, _ in
+                node.geometry?.firstMaterial?.emission.contents = self.arcadeSuccess
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) {
+                self.endMalfunctionSequence()
+            }
+        } else {
+            repairPromptLabel.text = "WRONG"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                self.updateRepairPrompt()
+            }
+        }
+    }
+
+    func updateRepairEquationDisplay() {
+        let basePrompt = repairPromptQuestion.replacingOccurrences(of: " = ?", with: " =")
+        let answerDisplay = repairInput.isEmpty ? "?" : repairInput
+        repairPromptLabel.text = "\(basePrompt) \(answerDisplay)"
+        repairPromptLabel.alpha = 1.0
+    }
+
+    func startMalfunctionShipWeave() {
+        spaceship.removeAction(forKey: "malfunction.weave")
+        let positions: [SCNVector3] = [
+            SCNVector3(x: -1.0, y: -0.7, z: 0),
+            SCNVector3(x: 0.9, y: -1.5, z: 0),
+            SCNVector3(x: -0.5, y: -1.8, z: 0),
+            SCNVector3(x: 1.1, y: -0.9, z: 0),
+            SCNVector3(x: 0.0, y: -1.0, z: 0)
+        ]
+        let rolls: [CGFloat] = [0.22, -0.26, 0.18, -0.2, 0.0]
+        var actions: [SCNAction] = []
+        for (index, position) in positions.enumerated() {
+            let move = SCNAction.move(to: position, duration: 0.34)
+            move.timingMode = .easeInEaseOut
+            let rotate = SCNAction.rotateTo(x: 0, y: CGFloat(Float.pi), z: rolls[index], duration: 0.34, usesShortestUnitArc: true)
+            rotate.timingMode = .easeInEaseOut
+            actions.append(.group([move, rotate]))
+        }
+        spaceship.runAction(.repeatForever(.sequence(actions)), forKey: "malfunction.weave")
+    }
+
+    func stopMalfunctionShipWeave() {
+        spaceship.removeAction(forKey: "malfunction.weave")
+        let settleMove = SCNAction.move(to: SCNVector3(x: 0, y: -1, z: 0), duration: 0.22)
+        settleMove.timingMode = .easeInEaseOut
+        let settleRotate = SCNAction.rotateTo(x: 0, y: CGFloat(Float.pi), z: 0, duration: 0.22, usesShortestUnitArc: true)
+        settleRotate.timingMode = .easeInEaseOut
+        spaceship.runAction(.group([settleMove, settleRotate]))
+    }
     
     func spawnMeteorWithQuestion() {
         guard !isEndingSession else { return }
+        guard !isInMalfunctionMode else { return }
         guard isReplaySession || questionNumber < missionQuestionLimit else {
             completeMission()
             return
@@ -983,6 +1321,8 @@ class GameViewController: UIViewController {
                 guard !self.isEndingSession else { return }
                 if self.hasMasteredReplayProblemSet() {
                     self.completeReplaySession()
+                } else if self.shouldTriggerMalfunctionAfterCurrentWave() {
+                    self.beginMalfunctionSequence()
                 } else if !self.isReplaySession && self.questionNumber >= self.missionQuestionLimit {
                     self.completeMission()
                 } else {
@@ -1640,6 +1980,7 @@ class GameViewController: UIViewController {
 
     func createStarRewardBanner(frame: CGRect, reward: MissionStarReward, breakdown: [StarRewardLine]) -> UIView {
         let banner = UIView(frame: frame)
+        let displayedTotal = breakdown.reduce(0) { $0 + $1.stars }
         applyArcadePanelStyle(
             to: banner,
             accent: arcadeWarning,
@@ -1688,7 +2029,7 @@ class GameViewController: UIViewController {
         }
 
         addArcadePulseAnimation(to: banner, scale: 1.03, duration: 0.72)
-        animateRewardBreakdown(rows: rowViews, valueLabels: valueLabels, totalLabel: totalLabel, breakdown: breakdown, finalTotal: reward.earned)
+        animateRewardBreakdown(rows: rowViews, valueLabels: valueLabels, totalLabel: totalLabel, breakdown: breakdown, finalTotal: displayedTotal)
 
         return banner
     }
@@ -1856,7 +2197,7 @@ class GameViewController: UIViewController {
         }
     }
 
-    func starRewardBreakdown() -> [StarRewardLine] {
+    func starRewardBreakdown(includeRepairStars: Bool = true) -> [StarRewardLine] {
         var lines: [StarRewardLine] = [
             StarRewardLine(title: "BOARD CLEAR", stars: 10, accent: arcadeWarning)
         ]
@@ -1876,12 +2217,15 @@ class GameViewController: UIViewController {
         if topScore >= 10 {
             lines.append(StarRewardLine(title: "STREAK BONUS", stars: 2, accent: arcadeSignal))
         }
+        if includeRepairStars, repairStarsEarned > 0 {
+            lines.append(StarRewardLine(title: "REPAIR BONUS", stars: repairStarsEarned, accent: arcadeSignalBright))
+        }
 
         return lines
     }
 
     func calculateMissionStars() -> Int {
-        starRewardBreakdown().reduce(0) { $0 + $1.stars }
+        starRewardBreakdown(includeRepairStars: false).reduce(0) { $0 + $1.stars }
     }
 
     func animateStarCount(

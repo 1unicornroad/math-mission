@@ -47,7 +47,7 @@ class GameViewController: UIViewController {
     var tableCorrectAnswers: [Int: Int] = [:]
     var tableMisses: [Int: Int] = [:]
     var activeStarRewardTimers: [Timer] = []
-    let malfunctionTriggerWaves: Set<Int> = [15, 20]
+    let malfunctionTriggerWaves: Set<Int> = [10, 20, 25]
     let repairStarAward = 3
     var triggeredMalfunctionWaves: Set<Int> = []
     var isInMalfunctionMode = false
@@ -55,6 +55,9 @@ class GameViewController: UIViewController {
     var repairAnswer = 0
     var repairInput = ""
     var repairStarsEarned = 0
+    var repairsCompleted = 0
+    var repairAttemptCountForCurrentPrompt = 0
+    var repairReviewProblems: [String] = []
     
     // Track which specific problems were answered correctly on first attempt
     var perfectProblems: [String: Int] = [:]  // e.g. "3×4": 2 means answered perfectly twice
@@ -1070,6 +1073,7 @@ class GameViewController: UIViewController {
         repairPromptQuestion = prompt.question
         repairAnswer = prompt.answer
         repairInput = ""
+        repairAttemptCountForCurrentPrompt = 0
         systemsRestoredLabel.alpha = 0
         updateRepairEquationDisplay()
         repairInputLabel.text = "?"
@@ -1106,6 +1110,7 @@ class GameViewController: UIViewController {
 
         if enteredValue == repairAnswer {
             awardRepairStars()
+            repairsCompleted += 1
             repairPromptLabel.alpha = 0
             systemsRestoredLabel.alpha = 0
             UIView.animate(withDuration: 0.18, animations: {
@@ -1124,6 +1129,10 @@ class GameViewController: UIViewController {
                 self.endMalfunctionSequence()
             }
         } else {
+            if repairAttemptCountForCurrentPrompt == 0 {
+                repairReviewProblems.append(normalizedProblemKey(from: repairPromptQuestion))
+            }
+            repairAttemptCountForCurrentPrompt += 1
             repairPromptLabel.text = "WRONG"
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                 self.updateRepairPrompt()
@@ -1748,28 +1757,49 @@ class GameViewController: UIViewController {
             let hasReplay = !missedTargets.isEmpty
             let panelWidth = min(overlay.bounds.width - 36, 420)
             let rewardLines = success ? self.starRewardBreakdown() : []
-            let rewardSectionHeight: CGFloat = rewardLines.isEmpty ? 0 : CGFloat(62 + rewardLines.count * 24)
+            let rewardSectionHeight: CGFloat = rewardLines.isEmpty ? 0 : CGFloat(142 + rewardLines.count * 42)
             let summaryHeight: CGFloat = success ? 214 + rewardSectionHeight : 214
-            let missedPanelHeight: CGFloat = hasReplay ? 148 : 0
-            let reservedButtonHeight: CGFloat = hasReplay ? 124 : 60
-            let contentHeight = summaryHeight + (hasReplay ? missedPanelHeight + 14 : 0) + 18 + reservedButtonHeight
+            let missedRowCount = Int(ceil(Double(missedTargets.count) / 2.0))
+            let missedPanelHeight: CGFloat = hasReplay ? CGFloat(60 + missedRowCount * 44) : 0
+            let buttonStackHeight: CGFloat = hasReplay ? 124 : 60
+            let contentHeight = summaryHeight + (hasReplay ? missedPanelHeight + 14 : 0) + 18 + buttonStackHeight
             let panelX = (overlay.bounds.width - panelWidth) / 2
-            let panelY = max(topInset + 26, (overlay.bounds.height - bottomInset - contentHeight) / 2)
+            let availableHeight = overlay.bounds.height - topInset - bottomInset
+            let contentOffsetY = max(18, (availableHeight - min(contentHeight, availableHeight - 24)) / 2)
             let summaryAccent = success ? self.arcadeSuccess : self.arcadeDanger
             let debriefText = success ? "BOARD CLEARED" : "MISSION DEBRIEF"
             let debriefColor = success ? self.arcadeSuccess : self.arcadeSignalBright
             let heroTitleText = success ? "MISSION COMPLETE" : "GAME OVER"
             let headlineValueText = success ? "\(self.missionQuestionLimit)" : "\(self.totalMeteorsDestroyed)"
             let headlineLabelText = success ? "WAVES CLEARED" : "TOTAL CLEARED"
+
+            let scrollView = UIScrollView(frame: CGRect(
+                x: 0,
+                y: topInset,
+                width: overlay.bounds.width,
+                height: availableHeight
+            ))
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.alwaysBounceVertical = contentHeight > availableHeight - 24
+            overlay.addSubview(scrollView)
+
+            let contentView = UIView(frame: CGRect(
+                x: 0,
+                y: 0,
+                width: overlay.bounds.width,
+                height: max(contentHeight + contentOffsetY + 18, availableHeight)
+            ))
+            scrollView.addSubview(contentView)
+            scrollView.contentSize = contentView.bounds.size
             
-            let summaryPanel = UIView(frame: CGRect(x: panelX, y: panelY, width: panelWidth, height: summaryHeight))
+            let summaryPanel = UIView(frame: CGRect(x: panelX, y: contentOffsetY, width: panelWidth, height: summaryHeight))
             self.applyArcadePanelStyle(
                 to: summaryPanel,
                 accent: summaryAccent,
                 fillColors: [self.arcadePanelSoft, self.arcadePanel],
                 cornerCut: 20
             )
-            overlay.addSubview(summaryPanel)
+            contentView.addSubview(summaryPanel)
             
             let debriefLabel = UILabel(frame: CGRect(x: 18, y: 18, width: summaryPanel.bounds.width - 36, height: 14))
             debriefLabel.text = debriefText
@@ -1803,7 +1833,7 @@ class GameViewController: UIViewController {
             destroyedLabel.textAlignment = .center
             summaryPanel.addSubview(destroyedLabel)
             
-            let statCardWidth = (summaryPanel.bounds.width - 46) / 2
+            let statCardWidth = (summaryPanel.bounds.width - 56) / 3
             if success, let reward = self.lastMissionReward {
                 let rewardBanner = self.createStarRewardBanner(
                     frame: CGRect(x: 18, y: 156, width: summaryPanel.bounds.width - 36, height: rewardSectionHeight),
@@ -1812,7 +1842,7 @@ class GameViewController: UIViewController {
                 )
                 summaryPanel.addSubview(rewardBanner)
             }
-            let statsY: CGFloat = success ? 156 + rewardSectionHeight + 12 : 162
+            let statsY: CGFloat = success ? 156 + rewardSectionHeight + 18 : 162
             let perfectCard = self.createSummaryStatCard(
                 frame: CGRect(x: 18, y: statsY, width: statCardWidth, height: 34),
                 title: "PERFECT",
@@ -1828,6 +1858,14 @@ class GameViewController: UIViewController {
                 accent: self.arcadeDanger
             )
             summaryPanel.addSubview(missedCard)
+
+            let repairsCard = self.createSummaryStatCard(
+                frame: CGRect(x: missedCard.frame.maxX + 10, y: statsY, width: statCardWidth, height: 34),
+                title: "REPAIRS",
+                value: "\(self.repairsCompleted)",
+                accent: self.arcadeSignalBright
+            )
+            summaryPanel.addSubview(repairsCard)
             
             var lastPanelMaxY = summaryPanel.frame.maxY
             if hasReplay {
@@ -1845,7 +1883,7 @@ class GameViewController: UIViewController {
                     fillColors: [self.arcadePanelSoft, self.arcadePanel],
                     cornerCut: 18
                 )
-                overlay.addSubview(missedPanel)
+                contentView.addSubview(missedPanel)
                 
                 let missedHeader = UILabel(frame: CGRect(x: 18, y: 16, width: missedPanel.bounds.width - 36, height: 18))
                 missedHeader.text = "TRY THESE"
@@ -1876,10 +1914,7 @@ class GameViewController: UIViewController {
                 lastPanelMaxY = missedPanel.frame.maxY
             }
             
-            let primaryButtonY = min(
-                lastPanelMaxY + 18,
-                overlay.bounds.height - bottomInset - reservedButtonHeight
-            )
+            let primaryButtonY = lastPanelMaxY + 18
             if hasReplay {
                 let replayButton = self.createActionButton(
                     frame: CGRect(x: panelX, y: primaryButtonY, width: panelWidth, height: 60),
@@ -1889,7 +1924,7 @@ class GameViewController: UIViewController {
                     fillColors: [self.arcadeSignalBright, self.arcadeSignal, self.arcadeSignal.withAlphaComponent(0.84)],
                     action: #selector(self.playAgainWithMissed)
                 )
-                overlay.addSubview(replayButton)
+                contentView.addSubview(replayButton)
                 self.addArcadePulseAnimation(to: replayButton, scale: 1.025, duration: 0.78)
                 
                 let menuButton = self.createActionButton(
@@ -1900,7 +1935,7 @@ class GameViewController: UIViewController {
                     fillColors: [self.arcadePanelSoft, self.arcadePanel],
                     action: #selector(self.backToMenu)
                 )
-                overlay.addSubview(menuButton)
+                contentView.addSubview(menuButton)
             } else {
                 let menuButton = self.createActionButton(
                     frame: CGRect(x: panelX, y: primaryButtonY, width: panelWidth, height: 60),
@@ -1912,7 +1947,7 @@ class GameViewController: UIViewController {
                         : [self.arcadeSignalBright, self.arcadeSignal, self.arcadeSignal.withAlphaComponent(0.82)],
                     action: #selector(self.backToMenu)
                 )
-                overlay.addSubview(menuButton)
+                contentView.addSubview(menuButton)
                 self.addArcadePulseAnimation(to: menuButton, scale: 1.02, duration: 0.88)
             }
         }
@@ -1987,41 +2022,65 @@ class GameViewController: UIViewController {
             fillColors: [arcadePanelSoft, arcadePanel],
             cornerCut: 14
         )
-        let titleLabel = UILabel(frame: CGRect(x: 14, y: 8, width: banner.bounds.width - 28, height: 18))
+
+        let titleLabel = UILabel(frame: CGRect(x: 14, y: 10, width: banner.bounds.width - 28, height: 20))
         titleLabel.text = "STAR REWARD"
-        titleLabel.font = UIFont.exo2SemiBold(size: 11)
+        titleLabel.font = UIFont.exo2SemiBold(size: 13)
         titleLabel.textColor = arcadeWarning
         titleLabel.textAlignment = .center
         banner.addSubview(titleLabel)
-        let totalLabel = UILabel(frame: CGRect(x: 14, y: banner.bounds.height - 26, width: banner.bounds.width - 28, height: 18))
-        totalLabel.text = "TOTAL +0"
-        totalLabel.font = UIFont.orbitronBold(size: 15)
+
+        let medalSize: CGFloat = 96
+        let medalView = UIView(frame: CGRect(x: (banner.bounds.width - medalSize) / 2, y: 34, width: medalSize, height: medalSize))
+        medalView.layer.cornerRadius = medalSize / 2
+        medalView.layer.masksToBounds = true
+        medalView.backgroundColor = arcadeWarning.withAlphaComponent(0.12)
+        medalView.layer.borderColor = arcadeWarning.withAlphaComponent(0.9).cgColor
+        medalView.layer.borderWidth = 2
+        banner.addSubview(medalView)
+
+        let starBackdrop = UILabel(frame: medalView.bounds)
+        starBackdrop.text = "★"
+        starBackdrop.font = UIFont.orbitronBold(size: 64)
+        starBackdrop.textColor = arcadeWarning.withAlphaComponent(0.3)
+        starBackdrop.textAlignment = .center
+        medalView.addSubview(starBackdrop)
+
+        let totalTitleLabel = UILabel(frame: CGRect(x: 0, y: 17, width: medalView.bounds.width, height: 14))
+        totalTitleLabel.text = "TOTAL"
+        totalTitleLabel.font = UIFont.exo2SemiBold(size: 11)
+        totalTitleLabel.textColor = UIColor.white.withAlphaComponent(0.86)
+        totalTitleLabel.textAlignment = .center
+        medalView.addSubview(totalTitleLabel)
+
+        let totalLabel = UILabel(frame: CGRect(x: 8, y: 31, width: medalView.bounds.width - 16, height: 38))
+        totalLabel.text = "+0"
+        totalLabel.font = UIFont.orbitronBold(size: 28)
         totalLabel.textColor = .white
         totalLabel.textAlignment = .center
         totalLabel.alpha = 0
-        banner.addSubview(totalLabel)
+        medalView.addSubview(totalLabel)
 
         var rowViews: [UIView] = []
         var valueLabels: [UILabel] = []
-        let lineHeight: CGFloat = 24
+        let lineHeight: CGFloat = 42
         for (index, line) in breakdown.enumerated() {
-            let y = 34 + CGFloat(index) * lineHeight
-
-            let rowView = UIView(frame: CGRect(x: 10, y: y - 2, width: banner.bounds.width - 20, height: 22))
+            let y = 138 + CGFloat(index) * lineHeight
+            let rowView = UIView(frame: CGRect(x: 14, y: y - 3, width: banner.bounds.width - 28, height: 34))
             rowView.alpha = 0
             banner.addSubview(rowView)
 
-            let label = UILabel(frame: CGRect(x: 4, y: 2, width: rowView.bounds.width - 86, height: 18))
+            let label = UILabel(frame: CGRect(x: 2, y: 2, width: rowView.bounds.width - 108, height: 28))
             label.text = line.title
-            label.font = UIFont.exo2SemiBold(size: 11)
-            label.textColor = UIColor.white.withAlphaComponent(0.82)
+            label.font = UIFont.orbitronBold(size: 16)
+            label.textColor = .white
             rowView.addSubview(label)
 
-            let valueLabel = UILabel(frame: CGRect(x: rowView.bounds.width - 70, y: 2, width: 64, height: 18))
+            let valueLabel = UILabel(frame: CGRect(x: rowView.bounds.width - 98, y: 0, width: 92, height: 30))
             valueLabel.text = "+0"
-            valueLabel.font = UIFont.orbitronBold(size: 14)
+            valueLabel.font = UIFont.orbitronBold(size: 22)
             valueLabel.textColor = line.accent
-            valueLabel.textAlignment = NSTextAlignment.right
+            valueLabel.textAlignment = .right
             rowView.addSubview(valueLabel)
 
             rowViews.append(rowView)
@@ -2030,7 +2089,6 @@ class GameViewController: UIViewController {
 
         addArcadePulseAnimation(to: banner, scale: 1.03, duration: 0.72)
         animateRewardBreakdown(rows: rowViews, valueLabels: valueLabels, totalLabel: totalLabel, breakdown: breakdown, finalTotal: displayedTotal)
-
         return banner
     }
     
@@ -2142,6 +2200,9 @@ class GameViewController: UIViewController {
             let normalized = normalizedProblemKey(from: question)
             counts[normalized, default: 0] += 1
         }
+        for repairProblem in repairReviewProblems {
+            counts[repairProblem, default: 0] += 1
+        }
         
         return counts
             .map { (problem: $0.key, count: $0.value) }
@@ -2185,7 +2246,7 @@ class GameViewController: UIViewController {
         isEndingSession = true
         AudioManager.shared.playButtonTap()
         let replaySource = difficulty == .easy ? retryCandidateQuestions : missedQuestions
-        let missedProblems = replaySource.map { normalizedProblemKey(from: $0) }
+        let missedProblems = replaySource.map { normalizedProblemKey(from: $0) } + repairReviewProblems
         playAgainCallback?(missedProblems)
     }
 
@@ -2201,21 +2262,20 @@ class GameViewController: UIViewController {
         var lines: [StarRewardLine] = [
             StarRewardLine(title: "BOARD CLEAR", stars: 10, accent: arcadeWarning)
         ]
-
-        if firstAttemptCorrect >= 24 {
-            lines.append(StarRewardLine(title: "ACCURACY BONUS", stars: 5, accent: arcadeSuccess))
-        }
+        let accuracyBonus: Int
         if firstAttemptCorrect >= 27 {
-            lines.append(StarRewardLine(title: "SHARP SHOOTER", stars: 3, accent: arcadeCool))
+            accuracyBonus = 8
+        } else if firstAttemptCorrect >= 24 {
+            accuracyBonus = 5
+        } else {
+            accuracyBonus = 0
         }
-        if missedQuestions.count <= 2 {
-            lines.append(StarRewardLine(title: "PRECISION BONUS", stars: 3, accent: arcadeSignalBright))
+        if accuracyBonus > 0 {
+            lines.append(StarRewardLine(title: "ACCURACY BONUS", stars: accuracyBonus, accent: arcadeSuccess))
         }
-        if missedQuestions.isEmpty {
-            lines.append(StarRewardLine(title: "PERFECT BOARD", stars: 2, accent: arcadeSuccess))
-        }
-        if topScore >= 10 {
-            lines.append(StarRewardLine(title: "STREAK BONUS", stars: 2, accent: arcadeSignal))
+        let masteryBonus = (missedQuestions.isEmpty ? 3 : 0) + (topScore >= 10 ? 2 : 0)
+        if masteryBonus > 0 {
+            lines.append(StarRewardLine(title: missedQuestions.isEmpty ? "PERFECT RUN" : "STREAK BONUS", stars: masteryBonus, accent: arcadeCool))
         }
         if includeRepairStars, repairStarsEarned > 0 {
             lines.append(StarRewardLine(title: "REPAIR BONUS", stars: repairStarsEarned, accent: arcadeSignalBright))
@@ -2266,11 +2326,11 @@ class GameViewController: UIViewController {
         finalTotal: Int
     ) {
         totalLabel.alpha = 1
-        totalLabel.text = "TOTAL +0"
+        totalLabel.text = "+0"
 
         func revealRow(at index: Int, runningTotal: Int) {
             guard index < rows.count else {
-                totalLabel.text = "TOTAL +\(finalTotal)"
+                totalLabel.text = "+\(finalTotal)"
                 return
             }
 
@@ -2281,24 +2341,75 @@ class GameViewController: UIViewController {
             UIView.animate(withDuration: 0.22, animations: {
                 row.alpha = 1
             }) { _ in
-                self.animateStarCount(on: valueLabel, targetValue: line.stars, delay: 0.0, onStep: { currentValue in
-                    totalLabel.text = "TOTAL +\(runningTotal + currentValue)"
-                }) {
-                    let displayedTotal = runningTotal + line.stars
-                    totalLabel.text = "TOTAL +\(displayedTotal)"
-                    UIView.animate(withDuration: 0.16, animations: {
-                        totalLabel.transform = CGAffineTransform(scaleX: 1.08, y: 1.08)
-                    }) { _ in
-                        UIView.animate(withDuration: 0.16) {
-                            totalLabel.transform = .identity
+                self.animateStarCount(on: valueLabel, targetValue: line.stars, delay: 0.0, completion: {
+                    var displayedTotal = runningTotal
+                    self.animateStarsToTotal(
+                        from: row,
+                        count: line.stars,
+                        color: line.accent,
+                        totalLabel: totalLabel,
+                        onStarArrive: {
+                            displayedTotal += 1
+                            totalLabel.text = "+\(displayedTotal)"
                         }
-                        revealRow(at: index + 1, runningTotal: displayedTotal)
+                    ) {
+                        UIView.animate(withDuration: 0.16, animations: {
+                            totalLabel.transform = CGAffineTransform(scaleX: 1.08, y: 1.08)
+                        }) { _ in
+                            UIView.animate(withDuration: 0.16) {
+                                totalLabel.transform = .identity
+                            }
+                            revealRow(at: index + 1, runningTotal: runningTotal + line.stars)
+                        }
                     }
-                }
+                })
             }
         }
 
         revealRow(at: 0, runningTotal: 0)
+    }
+
+    func animateStarsToTotal(
+        from row: UIView,
+        count: Int,
+        color: UIColor,
+        totalLabel: UILabel,
+        onStarArrive: (() -> Void)? = nil,
+        completion: @escaping () -> Void
+    ) {
+        guard count > 0, let banner = row.superview else {
+            completion()
+            return
+        }
+        let group = DispatchGroup()
+        let startPoint = banner.convert(CGPoint(x: row.frame.maxX - 34, y: row.frame.midY), to: view)
+        let endPoint = totalLabel.superview?.convert(CGPoint(x: totalLabel.frame.midX, y: totalLabel.frame.midY), to: view) ?? .zero
+        for index in 0..<count {
+            group.enter()
+            let starLabel = UILabel(frame: CGRect(x: startPoint.x - 12, y: startPoint.y - 12, width: 24, height: 24))
+            starLabel.text = "★"
+            starLabel.font = UIFont.orbitronBold(size: 20)
+            starLabel.textColor = color
+            starLabel.textAlignment = .center
+            view.addSubview(starLabel)
+
+            let delay = 0.08 * Double(index)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                UIView.animate(withDuration: 0.34, animations: {
+                    starLabel.center = endPoint
+                    starLabel.transform = CGAffineTransform(scaleX: 0.35, y: 0.35)
+                    starLabel.alpha = 0
+                }) { _ in
+                    starLabel.removeFromSuperview()
+                    onStarArrive?()
+                    group.leave()
+                }
+            }
+        }
+
+        group.notify(queue: .main) {
+            completion()
+        }
     }
 
     func recordPresentedQuestion(_ question: String) {

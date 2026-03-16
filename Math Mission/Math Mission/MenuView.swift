@@ -477,6 +477,22 @@ private struct AvatarBadge: View {
 
 
 struct MenuView: View {
+    private enum PilotSelectionItem: Identifiable {
+        case profile(PlayerProfile)
+        case addPilot
+        case guest
+
+        var id: String {
+            switch self {
+            case .profile(let profile):
+                return profile.id.uuidString
+            case .addPilot:
+                return "add-pilot"
+            case .guest:
+                return "guest"
+            }
+        }
+    }
     private enum MenuStage: Int {
         case attract
         case profile
@@ -653,6 +669,7 @@ struct MenuView: View {
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(height: containerHeight)
+        .compositingGroup()
     }
 
     private func createPilotScreen(containerHeight: CGFloat) -> some View {
@@ -749,7 +766,18 @@ struct MenuView: View {
                 }
             } else {
                 VStack(spacing: 18) {
-                    pilotButtons(fillWidth: true)
+                    ForEach(compactPilotRows.indices, id: \.self) { rowIndex in
+                        HStack(alignment: .top, spacing: 16) {
+                            ForEach(compactPilotRows[rowIndex]) { item in
+                                pilotButton(for: item, fillWidth: true)
+                            }
+                            if compactPilotRows[rowIndex].count == 1 {
+                                Spacer(minLength: 0)
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .top)
+                    }
                 }
                 .frame(maxWidth: .infinity)
             }
@@ -920,9 +948,20 @@ struct MenuView: View {
         showSetup()
     }
 
+    private var pilotSelectionItems: [PilotSelectionItem] {
+        profileStore.profiles.map { .profile($0) } + [.addPilot, .guest]
+    }
+
+    private var compactPilotRows: [[PilotSelectionItem]] {
+        stride(from: 0, to: pilotSelectionItems.count, by: 2).map { start in
+            Array(pilotSelectionItems[start..<min(start + 2, pilotSelectionItems.count)])
+        }
+    }
+
     @ViewBuilder
-    private func pilotButtons(fillWidth: Bool) -> some View {
-        ForEach(profileStore.profiles) { profile in
+    private func pilotButton(for item: PilotSelectionItem, fillWidth: Bool) -> some View {
+        switch item {
+        case .profile(let profile):
             Button {
                 AudioManager.shared.playButtonTap()
                 profileStore.selectProfile(profile)
@@ -936,31 +975,40 @@ struct MenuView: View {
                 .frame(maxWidth: fillWidth ? .infinity : nil)
             }
             .buttonStyle(.plain)
-        }
 
-        Button {
-            AudioManager.shared.playButtonTap()
-            showCreatePilot()
-        } label: {
-            AddPilotCard(isExpanded: currentStage == .createPilot)
+        case .addPilot:
+            Button {
+                AudioManager.shared.playButtonTap()
+                showCreatePilot()
+            } label: {
+                AddPilotCard(isExpanded: currentStage == .createPilot)
+                    .frame(maxWidth: fillWidth ? .infinity : nil)
+            }
+            .buttonStyle(.plain)
+
+        case .guest:
+            Button {
+                AudioManager.shared.playButtonTap()
+                profileStore.continueAsGuest()
+                showSetup()
+            } label: {
+                PilotSelectionCard(
+                    title: "Guest",
+                    avatar: .star,
+                    isSelected: profileStore.isGuestActive,
+                    usesAccentSelection: false
+                )
                 .frame(maxWidth: fillWidth ? .infinity : nil)
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+    }
 
-        Button {
-            AudioManager.shared.playButtonTap()
-            profileStore.continueAsGuest()
-            showSetup()
-        } label: {
-            PilotSelectionCard(
-                title: "Guest",
-                avatar: .star,
-                isSelected: profileStore.isGuestActive,
-                usesAccentSelection: false
-            )
-            .frame(maxWidth: fillWidth ? .infinity : nil)
+    @ViewBuilder
+    private func pilotButtons(fillWidth: Bool) -> some View {
+        ForEach(pilotSelectionItems) { item in
+            pilotButton(for: item, fillWidth: fillWidth)
         }
-        .buttonStyle(.plain)
     }
     
     private func restartAnimations() {

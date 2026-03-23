@@ -368,6 +368,17 @@ final class PlayerProfileStore: ObservableObject {
         saveContext()
         refreshProfiles()
     }
+    
+    func deleteProfile(_ profile: PlayerProfile) {
+        // If deleting the active profile, switch to guest
+        if case .profile(let id) = activeSession, id == profile.id {
+            continueAsGuest()
+        }
+        
+        context.delete(profile)
+        saveContext()
+        refreshProfiles()
+    }
 
     func updateProgress(_ update: (inout PlayerProgress) -> Void) {
         switch activeSession {

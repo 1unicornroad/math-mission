@@ -120,6 +120,8 @@ private struct ProfileHubView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draftName = ""
     @State private var draftAvatar: PlayerAvatar = .avatar1
+    @State private var showingDeleteConfirmation = false
+    @State private var profileToDelete: PlayerProfile?
 
     var body: some View {
         NavigationStack {
@@ -163,6 +165,18 @@ private struct ProfileHubView: View {
         }
         .onChange(of: profileStore.activeProfile?.id) { _, _ in
             syncDraftValues()
+        }
+        .confirmationDialog(
+            "Delete Pilot",
+            isPresented: $showingDeleteConfirmation,
+            presenting: profileToDelete
+        ) { profile in
+            Button("Delete \(profile.name)", role: .destructive) {
+                deletePilot(profile)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { profile in
+            Text("Are you sure you want to delete pilot \(profile.name)? This action cannot be undone.")
         }
     }
 
@@ -288,62 +302,75 @@ private struct ProfileHubView: View {
     }
 
     private func editProfileSection(profile: PlayerProfile) -> some View {
-        ArcadePanel(accent: ArcadePalette.signalBright) {
-            VStack(alignment: .leading, spacing: 16) {
-                sectionHeader("EDIT PROFILE")
+        VStack(alignment: .leading, spacing: 8) {
+            ArcadePanel(accent: ArcadePalette.signalBright) {
+                VStack(alignment: .leading, spacing: 16) {
+                    sectionHeader("EDIT PROFILE")
 
-                TextField("Pilot name", text: Binding(
-                    get: { draftName },
-                    set: { draftName = String($0.prefix(20)) }
-                ))
-                .textInputAutocapitalization(.words)
-                .disableAutocorrection(true)
-                .font(.custom("Exo 2 SemiBold", size: 16))
-                .foregroundColor(.white)
-                .padding(.horizontal, 14)
-                .frame(height: 50)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(ArcadePalette.panelBottom.opacity(0.92))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(ArcadePalette.panelLine, lineWidth: 1)
-                )
-
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
-                    ForEach(PlayerAvatar.allCases, id: \.self) { avatar in
-                        Button {
-                            AudioManager.shared.playButtonTap()
-                            draftAvatar = avatar
-                        } label: {
-                            AvatarBadge(avatar: avatar, isSelected: draftAvatar == avatar, size: 52)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .fill(ArcadePalette.panelBottom.opacity(0.92))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(draftAvatar == avatar ? ArcadePalette.signalBright : ArcadePalette.panelLine, lineWidth: draftAvatar == avatar ? 1.4 : 1)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-
-                Button {
-                    AudioManager.shared.playButtonTap()
-                    profileStore.updateProfile(profile, name: draftName, avatar: draftAvatar)
-                    syncDraftValues()
-                } label: {
-                    ArcadePrimaryActionLabel(
-                        title: "Save Profile",
-                        enabled: hasProfileChanges(profile)
+                    TextField("Pilot name", text: Binding(
+                        get: { draftName },
+                        set: { draftName = String($0.prefix(20)) }
+                    ))
+                    .textInputAutocapitalization(.words)
+                    .disableAutocorrection(true)
+                    .font(.custom("Exo 2 SemiBold", size: 16))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .frame(height: 50)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(ArcadePalette.panelBottom.opacity(0.92))
                     )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(ArcadePalette.panelLine, lineWidth: 1)
+                    )
+
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 3), spacing: 12) {
+                        ForEach(PlayerAvatar.allCases, id: \.self) { avatar in
+                            Button {
+                                AudioManager.shared.playButtonTap()
+                                draftAvatar = avatar
+                            } label: {
+                                AvatarBadge(avatar: avatar, isSelected: draftAvatar == avatar, size: 52)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .fill(ArcadePalette.panelBottom.opacity(0.92))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                            .stroke(draftAvatar == avatar ? ArcadePalette.signalBright : ArcadePalette.panelLine, lineWidth: draftAvatar == avatar ? 1.4 : 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    Button {
+                        AudioManager.shared.playButtonTap()
+                        profileStore.updateProfile(profile, name: draftName, avatar: draftAvatar)
+                        syncDraftValues()
+                    } label: {
+                        ArcadePrimaryActionLabel(
+                            title: "Save Profile",
+                            enabled: hasProfileChanges(profile)
+                        )
+                    }
+                    .disabled(!hasProfileChanges(profile))
                 }
-                .disabled(!hasProfileChanges(profile))
+            }
+            
+            // Delete pilot button below the panel
+            Button {
+                AudioManager.shared.playButtonTap()
+                showDeleteConfirmation(for: profile)
+            } label: {
+                Text("Delete Pilot")
+                    .font(.custom("Exo 2 SemiBold", size: 14))
+                    .foregroundColor(ArcadePalette.danger)
+                    .tracking(0.8)
             }
         }
     }
@@ -378,6 +405,16 @@ private struct ProfileHubView: View {
         let cleanDraftName = profileStore.sanitizedName(draftName)
         guard !cleanDraftName.isEmpty else { return false }
         return cleanDraftName != profile.name || draftAvatar != profile.avatar
+    }
+    
+    private func showDeleteConfirmation(for profile: PlayerProfile) {
+        profileToDelete = profile
+        showingDeleteConfirmation = true
+    }
+    
+    private func deletePilot(_ profile: PlayerProfile) {
+        profileStore.deleteProfile(profile)
+        dismiss()
     }
 
     private func sectionHeader(_ title: String) -> some View {
@@ -529,7 +566,7 @@ struct MenuView: View {
     @State private var signalBlink = false
     @State private var readyPulse = false
     @State private var newPlayerName = ""
-    @State private var selectedAvatar: PlayerAvatar = .avatar1
+    @State private var selectedAvatar: PlayerAvatar? = nil
     @FocusState private var isNameFieldFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
@@ -659,6 +696,7 @@ struct MenuView: View {
             AudioManager.shared.playButtonTap()
             showProfileSelection()
         }
+        .clipped()
     }
 
     private func playerSelectionScreen(containerHeight: CGFloat) -> some View {
@@ -671,12 +709,14 @@ struct MenuView: View {
 
             pilotStack
 
-            Button {
-                AudioManager.shared.playButtonTap()
-                showAttract()
-            } label: {
-                ArcadeSecondaryActionLabel(title: "Back")
-                    .frame(width: 148)
+            if !isNameFieldFocused {
+                Button {
+                    AudioManager.shared.playButtonTap()
+                    showAttract()
+                } label: {
+                    ArcadeSecondaryActionLabel(title: "Back")
+                        .frame(width: 148)
+                }
             }
 
             Spacer()
@@ -686,6 +726,7 @@ struct MenuView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(height: containerHeight)
         .compositingGroup()
+        .clipped()
     }
 
     private func createPilotScreen(containerHeight: CGFloat) -> some View {
@@ -748,19 +789,21 @@ struct MenuView: View {
                     } label: {
                         ArcadePrimaryActionLabel(
                             title: "Create Pilot",
-                            enabled: !profileStore.sanitizedName(newPlayerName).isEmpty
+                            enabled: !profileStore.sanitizedName(newPlayerName).isEmpty && selectedAvatar != nil
                         )
                     }
-                    .disabled(profileStore.sanitizedName(newPlayerName).isEmpty)
+                    .disabled(profileStore.sanitizedName(newPlayerName).isEmpty || selectedAvatar == nil)
 
                     Button {
                         AudioManager.shared.playButtonTap()
+                        isNameFieldFocused = false
                         newPlayerName = ""
-                        selectedAvatar = .avatar1
+                        selectedAvatar = nil
                         showProfileSelection()
                     } label: {
                         ArcadeSecondaryActionLabel(title: "Back")
                     }
+                    .opacity(isNameFieldFocused ? 0 : 1)
                 }
             }
             .frame(maxWidth: 520)
@@ -770,6 +813,7 @@ struct MenuView: View {
         .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(height: containerHeight)
+        .clipped()
     }
     private var pilotStack: some View {
         Group {
@@ -940,6 +984,9 @@ struct MenuView: View {
 
     private func showCreatePilot() {
         currentStage = .createPilot
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            isNameFieldFocused = true
+        }
     }
 
     private func showSetup() {
@@ -957,10 +1004,10 @@ struct MenuView: View {
     private func createPilotAndContinue() {
         isNameFieldFocused = false
         let cleanName = profileStore.sanitizedName(newPlayerName)
-        guard !cleanName.isEmpty else { return }
-        profileStore.createProfile(name: cleanName, avatar: selectedAvatar)
+        guard !cleanName.isEmpty, let avatar = selectedAvatar else { return }
+        profileStore.createProfile(name: cleanName, avatar: avatar)
         newPlayerName = ""
-        selectedAvatar = .avatar1
+        selectedAvatar = nil
         showSetup()
     }
 

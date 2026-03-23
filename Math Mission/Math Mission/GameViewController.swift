@@ -548,13 +548,11 @@ class GameViewController: UIViewController {
     
     func setupUI() {
         let topInset = max(view.safeAreaInsets.top, 20)
-        livesContainer = UIView(frame: CGRect(x: 16, y: topInset + 18, width: 188, height: 104))
-        applyArcadePanelStyle(
-            to: livesContainer,
-            accent: arcadeSignal,
-            fillColors: [arcadePanelSoft, arcadePanel],
-            cornerCut: 18
-        )
+        let panelHeight: CGFloat = 104
+        let topPanelY = topInset + 18
+        
+        livesContainer = UIView(frame: CGRect(x: 16, y: topPanelY, width: 188, height: panelHeight))
+        // No background panel styling
         view.addSubview(livesContainer)
         
         hullStatusLabel = UILabel(frame: CGRect(x: 16, y: 14, width: 84, height: 18))
@@ -565,18 +563,15 @@ class GameViewController: UIViewController {
         hullStatusLabel.minimumScaleFactor = 0.8
         livesContainer.addSubview(hullStatusLabel)
 
-        exitButton = UIButton(frame: CGRect(x: livesContainer.bounds.width - 84, y: 10, width: 68, height: 28))
-        styleSmallPanelButton(exitButton, title: "Exit", accent: arcadeDanger)
+        exitButton = UIButton(frame: CGRect(x: view.bounds.width - 40 - 16, y: topInset + 4, width: 40, height: 40))
+        exitButton.setTitle("✕", for: .normal)
+        exitButton.setTitleColor(.white, for: .normal)
+        exitButton.titleLabel?.font = UIFont.systemFont(ofSize: 20, weight: .light)
         exitButton.addTarget(self, action: #selector(exitGame), for: .touchUpInside)
-        livesContainer.addSubview(exitButton)
+        view.addSubview(exitButton)
         
-        statusPanel = UIView(frame: CGRect(x: view.bounds.width - 168, y: topInset + 18, width: 152, height: 104))
-        applyArcadePanelStyle(
-            to: statusPanel,
-            accent: arcadeCool,
-            fillColors: [arcadePanelSoft, arcadePanel],
-            cornerCut: 18
-        )
+        statusPanel = UIView(frame: CGRect(x: view.bounds.width - 168, y: topPanelY, width: 152, height: panelHeight))
+        // No background panel styling
         view.addSubview(statusPanel)
         
         streakTitleLabel = UILabel(frame: CGRect(x: 12, y: 10, width: statusPanel.bounds.width - 24, height: 12))
@@ -672,18 +667,7 @@ class GameViewController: UIViewController {
             height: questionPanelHeight
         )
         
-        applyArcadePanelStyle(
-            to: livesContainer,
-            accent: arcadeSignal,
-            fillColors: [arcadePanelSoft, arcadePanel],
-            cornerCut: 18
-        )
-        applyArcadePanelStyle(
-            to: statusPanel,
-            accent: arcadeCool,
-            fillColors: [arcadePanelSoft, arcadePanel],
-            cornerCut: 18
-        )
+        // No background styling for lives and stats panels
         applyArcadePanelStyle(
             to: questionPanel,
             accent: arcadeSignalBright,
@@ -692,8 +676,7 @@ class GameViewController: UIViewController {
         )
         
         hullStatusLabel.frame = CGRect(x: 16, y: 14, width: 84, height: 18)
-        exitButton.frame = CGRect(x: livesContainer.bounds.width - 84, y: 10, width: 68, height: 28)
-        styleSmallPanelButton(exitButton, title: "Exit", accent: arcadeDanger)
+        exitButton.frame = CGRect(x: view.bounds.width - 40 - 16, y: topInset + 4, width: 40, height: 40)
         layoutStatusMetrics()
         questionLabel.frame = CGRect(x: 18, y: 24, width: questionPanel.bounds.width - 36, height: 60)
         layoutMalfunctionOverlay()

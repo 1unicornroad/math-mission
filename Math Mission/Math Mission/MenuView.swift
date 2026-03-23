@@ -93,7 +93,7 @@ private struct MenuPracticeTile: View {
                 Text(title.uppercased())
                     .font(.custom("Orbitron-Bold", size: 18))
                     .foregroundColor(.white)
-                Text("CUSTOM SETUP")
+                Text("CHOOSE FROM ANY")
                     .font(.custom("Exo 2 SemiBold", size: 10))
                     .foregroundColor(ArcadePalette.textMuted)
                     .tracking(1.2)
@@ -119,7 +119,7 @@ private struct ProfileHubView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var draftName = ""
-    @State private var draftAvatar: PlayerAvatar = .rocket
+    @State private var draftAvatar: PlayerAvatar = .avatar1
 
     var body: some View {
         NavigationStack {
@@ -169,11 +169,11 @@ private struct ProfileHubView: View {
     private var hubHeader: some View {
         let rank = profileStore.activeRank
         return HStack(alignment: .center, spacing: 16) {
-            AvatarBadge(avatar: profileStore.activeAvatar, isSelected: false, size: 68)
+            AvatarBadge(avatar: profileStore.activeAvatar, isSelected: false, size: 200, useRoundedRect: true)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text(profileStore.activeDisplayName.uppercased())
-                    .font(.custom("Orbitron-Bold", size: 30))
+                    .font(.custom("Orbitron-Bold", size: 28))
                     .foregroundColor(ArcadePalette.textPrimary)
                 Text(profileStore.isGuestActive ? "GUEST SESSION" : rank.title)
                     .font(.custom("Exo 2 SemiBold", size: 13))
@@ -340,10 +340,10 @@ private struct ProfileHubView: View {
                 } label: {
                     ArcadePrimaryActionLabel(
                         title: "Save Profile",
-                        enabled: !profileStore.sanitizedName(draftName).isEmpty
+                        enabled: hasProfileChanges(profile)
                     )
                 }
-                .disabled(profileStore.sanitizedName(draftName).isEmpty)
+                .disabled(!hasProfileChanges(profile))
             }
         }
     }
@@ -371,7 +371,13 @@ private struct ProfileHubView: View {
 
     private func syncDraftValues() {
         draftName = profileStore.activeProfile?.name ?? ""
-        draftAvatar = profileStore.activeProfile?.avatar ?? .rocket
+        draftAvatar = profileStore.activeProfile?.avatar ?? .avatar1
+    }
+    
+    private func hasProfileChanges(_ profile: PlayerProfile) -> Bool {
+        let cleanDraftName = profileStore.sanitizedName(draftName)
+        guard !cleanDraftName.isEmpty else { return false }
+        return cleanDraftName != profile.name || draftAvatar != profile.avatar
     }
 
     private func sectionHeader(_ title: String) -> some View {
@@ -458,20 +464,30 @@ private struct AvatarBadge: View {
     let avatar: PlayerAvatar
     let isSelected: Bool
     let size: CGFloat
+    var useRoundedRect: Bool = false
 
     var body: some View {
-        Image(systemName: avatar.symbolName)
-            .font(.system(size: size * 0.38, weight: .bold))
-            .foregroundColor(.white)
-            .frame(width: size, height: size)
-            .background(
-                Circle()
-                    .fill(isSelected ? ArcadePalette.signal.opacity(0.9) : ArcadePalette.panelBottom.opacity(0.92))
-            )
-            .overlay(
-                Circle()
-                    .stroke(isSelected ? ArcadePalette.signalBright : ArcadePalette.panelLine, lineWidth: isSelected ? 2 : 1)
-            )
+        if useRoundedRect {
+            Image(avatar.imageName)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(height: size)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(isSelected ? ArcadePalette.signalBright : ArcadePalette.panelLine, lineWidth: isSelected ? 2 : 1)
+                )
+        } else {
+            Image(avatar.imageName)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+                .overlay(
+                    Circle()
+                        .stroke(isSelected ? ArcadePalette.signalBright : ArcadePalette.panelLine, lineWidth: isSelected ? 2 : 1)
+                )
+        }
     }
 }
 
@@ -513,7 +529,7 @@ struct MenuView: View {
     @State private var signalBlink = false
     @State private var readyPulse = false
     @State private var newPlayerName = ""
-    @State private var selectedAvatar: PlayerAvatar = .rocket
+    @State private var selectedAvatar: PlayerAvatar = .avatar1
     @FocusState private var isNameFieldFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
@@ -740,7 +756,7 @@ struct MenuView: View {
                     Button {
                         AudioManager.shared.playButtonTap()
                         newPlayerName = ""
-                        selectedAvatar = .rocket
+                        selectedAvatar = .avatar1
                         showProfileSelection()
                     } label: {
                         ArcadeSecondaryActionLabel(title: "Back")
@@ -944,7 +960,7 @@ struct MenuView: View {
         guard !cleanName.isEmpty else { return }
         profileStore.createProfile(name: cleanName, avatar: selectedAvatar)
         newPlayerName = ""
-        selectedAvatar = .rocket
+        selectedAvatar = .avatar1
         showSetup()
     }
 
@@ -994,7 +1010,7 @@ struct MenuView: View {
             } label: {
                 PilotSelectionCard(
                     title: "Guest",
-                    avatar: .star,
+                    avatar: .avatar1,
                     isSelected: profileStore.isGuestActive,
                     usesAccentSelection: false
                 )

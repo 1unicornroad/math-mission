@@ -15,6 +15,12 @@ class GameViewController: UIViewController {
         let stars: Int
         let accent: UIColor
     }
+    struct MeteorChoice {
+        let node: SCNNode
+        let answerValue: Int
+        let laneX: Float
+        let isCorrect: Bool
+    }
     
     var sceneView: SCNView!
     var gameScene: SCNScene!
@@ -74,6 +80,9 @@ class GameViewController: UIViewController {
     var didCompleteReplaySession = false
     var didCompleteMission = false
     var meteor: SCNNode?
+    var activeMeteorChoices: [MeteorChoice] = []
+    var hasResolvedCurrentEncounter = false
+    var isResolvingTap = false
     var questionLabel: UILabel!
     var questionPanel: UIView!
     var streakLabel: UILabel!
@@ -91,7 +100,6 @@ class GameViewController: UIViewController {
     // Control panel buttons
     var answerButtons: [UIButton] = []
     var statusPanel: UIView!
-    var controlPanel: UIView!
     var gameOverOverlay: UIView?
     var malfunctionOverlay: UIView!
     var malfunctionTitleLabel: UILabel!
@@ -118,6 +126,12 @@ class GameViewController: UIViewController {
     let arcadeDanger = UIColor(red: 0.93, green: 0.33, blue: 0.27, alpha: 1.0)
     let replayMasteryThreshold = 3
     let missionQuestionLimit = 30
+    let lanePositionsByCount: [Int: [Float]] = [
+        3: [-2.5, 0.0, 2.5],
+        4: [-3.3, -1.1, 1.1, 3.3]
+    ]
+    let meteorHoverY: Float = -0.75
+    let meteorHoverZ: Float = -8.8
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -142,7 +156,7 @@ class GameViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         
-        guard livesContainer != nil, statusPanel != nil, questionPanel != nil, controlPanel != nil else {
+        guard livesContainer != nil, statusPanel != nil, questionPanel != nil else {
             return
         }
         
@@ -370,6 +384,8 @@ class GameViewController: UIViewController {
         sceneView.allowsCameraControl = false
         sceneView.autoenablesDefaultLighting = false
         sceneView.backgroundColor = .black
+        let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleSceneTap(_:)))
+        sceneView.addGestureRecognizer(tapRecognizer)
         
         gameScene = SCNScene()
         sceneView.scene = gameScene
@@ -394,8 +410,7 @@ class GameViewController: UIViewController {
             spaceship.addChildNode(child)
         }
         
-        // Position spaceship higher to make room for control panel
-        spaceship.position = SCNVector3(x: 0, y: -1, z: 0)
+        spaceship.position = SCNVector3(x: 0, y: -2.25, z: 0)
         spaceship.scale = SCNVector3(x: 0.5, y: 0.5, z: 0.5)
         spaceship.eulerAngles = SCNVector3(x: 0, y: Float.pi, z: 0)
         
@@ -435,7 +450,7 @@ class GameViewController: UIViewController {
         particles.particleVelocity = 3.8
         particles.particleVelocityVariation = 0.35
         particles.acceleration = SCNVector3(x: 0, y: 0, z: 1.1)
-        particles.emittingDirection = SCNVector3(x: 0, y: 0, z: -1)  // Backward away from ship
+        particles.emittingDirection = SCNVector3(x: 0, y: 0, z: -1)
         particles.spreadingAngle = 6
         
         return particles
@@ -533,8 +548,6 @@ class GameViewController: UIViewController {
     
     func setupUI() {
         let topInset = max(view.safeAreaInsets.top, 20)
-        let bottomInset = max(view.safeAreaInsets.bottom, 12)
-        
         livesContainer = UIView(frame: CGRect(x: 16, y: topInset + 18, width: 188, height: 104))
         applyArcadePanelStyle(
             to: livesContainer,
@@ -615,22 +628,11 @@ class GameViewController: UIViewController {
         questionLabel.minimumScaleFactor = 0.7
         questionPanel.addSubview(questionLabel)
         
-        let panelHeight: CGFloat = 150
-        controlPanel = UIView(frame: CGRect(x: 16, y: view.bounds.height - panelHeight - bottomInset - 12, width: view.bounds.width - 32, height: panelHeight))
-        applyArcadePanelStyle(
-            to: controlPanel,
-            accent: arcadeSignal,
-            fillColors: [arcadePanelSoft, arcadePanel],
-            cornerCut: 20
-        )
-        view.addSubview(controlPanel)
-        
-        // Answer buttons (3 for easy/medium, 4 for hard)
-        // Store buttons in array, will position them dynamically based on count
+        // Legacy buttons are kept hidden so the old button flow stays inert while meteor tapping drives gameplay.
         let maxButtons = 4
         
         for i in 0..<maxButtons {
-            let button = UIButton(frame: CGRect(x: 0, y: controlPanel.bounds.height - 116, width: 82, height: 82))
+            let button = UIButton(frame: .zero)
             button.setTitleColor(.white, for: .normal)
             button.titleLabel?.font = UIFont.orbitronBold(size: 30)
             button.tag = i
@@ -640,8 +642,13 @@ class GameViewController: UIViewController {
                 accent: arcadeCool,
                 fillColors: [arcadeCool.withAlphaComponent(0.42), arcadePanelSoft]
             )
-            controlPanel.addSubview(button)
+            button.isHidden = true
+            view.addSubview(button)
             answerButtons.append(button)
+        }
+        answerButtons.forEach {
+            $0.isEnabled = false
+            $0.alpha = 0
         }
         
         layoutGameplayHUD()
@@ -652,11 +659,9 @@ class GameViewController: UIViewController {
     func layoutGameplayHUD() {
         let sideInset: CGFloat = 16
         let topInset = max(view.safeAreaInsets.top, 20)
-        let bottomInset = max(view.safeAreaInsets.bottom, 12)
         let topPanelY = topInset + 18
         let topPanelHeight: CGFloat = 104
         let questionPanelHeight: CGFloat = 112
-        let controlPanelHeight: CGFloat = 150
         
         livesContainer.frame = CGRect(x: sideInset, y: topPanelY, width: 188, height: topPanelHeight)
         statusPanel.frame = CGRect(x: view.bounds.width - sideInset - 152, y: topPanelY, width: 152, height: topPanelHeight)
@@ -665,12 +670,6 @@ class GameViewController: UIViewController {
             y: livesContainer.frame.maxY + 22,
             width: view.bounds.width - sideInset * 2,
             height: questionPanelHeight
-        )
-        controlPanel.frame = CGRect(
-            x: sideInset,
-            y: view.bounds.height - controlPanelHeight - bottomInset - 12,
-            width: view.bounds.width - sideInset * 2,
-            height: controlPanelHeight
         )
         
         applyArcadePanelStyle(
@@ -691,41 +690,17 @@ class GameViewController: UIViewController {
             fillColors: [arcadePanelSoft, arcadePanel],
             cornerCut: 20
         )
-        applyArcadePanelStyle(
-            to: controlPanel,
-            accent: arcadeSignal,
-            fillColors: [arcadePanelSoft, arcadePanel],
-            cornerCut: 20
-        )
         
         hullStatusLabel.frame = CGRect(x: 16, y: 14, width: 84, height: 18)
         exitButton.frame = CGRect(x: livesContainer.bounds.width - 84, y: 10, width: 68, height: 28)
         styleSmallPanelButton(exitButton, title: "Exit", accent: arcadeDanger)
         layoutStatusMetrics()
         questionLabel.frame = CGRect(x: 18, y: 24, width: questionPanel.bounds.width - 36, height: 60)
-        
-        layoutAnswerButtons(for: difficulty == .hard ? 4 : 3)
         layoutMalfunctionOverlay()
     }
     
     func layoutAnswerButtons(for optionCount: Int) {
-        guard controlPanel != nil else { return }
-        
-        let buttonWidth: CGFloat = optionCount == 4 ? 74 : 92
-        let buttonHeight: CGFloat = 82
-        let spacing: CGFloat = 12
-        let totalWidth = buttonWidth * CGFloat(optionCount) + spacing * CGFloat(optionCount - 1)
-        let startX = (controlPanel.bounds.width - totalWidth) / 2
-        let buttonY = controlPanel.bounds.height - buttonHeight - 34
-        
-        for (index, button) in answerButtons.enumerated() where index < optionCount {
-            button.frame = CGRect(
-                x: startX + CGFloat(index) * (buttonWidth + spacing),
-                y: buttonY,
-                width: buttonWidth,
-                height: buttonHeight
-            )
-        }
+        return
     }
 
     func setupMalfunctionOverlay() {
@@ -813,7 +788,7 @@ class GameViewController: UIViewController {
         guard malfunctionOverlay != nil else { return }
 
         let top = questionPanel?.frame.minY ?? 0
-        let bottom = controlPanel?.frame.maxY ?? view.bounds.height
+        let bottom = view.bounds.height - max(view.safeAreaInsets.bottom, 12) - 12
         malfunctionOverlay.frame = CGRect(x: 16, y: top, width: view.bounds.width - 32, height: bottom - top)
         applyArcadePanelStyle(
             to: malfunctionOverlay,
@@ -1015,6 +990,354 @@ class GameViewController: UIViewController {
         return (prompt.question, prompt.answer)
     }
 
+    func clearActiveMeteorEncounter() {
+        let lingeringChoices = activeMeteorChoices
+        activeMeteorChoices.removeAll()
+        meteor = nil
+        lingeringChoices.forEach { choice in
+            choice.node.removeAction(forKey: "meteor.flight")
+            choice.node.removeAction(forKey: "meteor.escape")
+            choice.node.removeAction(forKey: "meteor.nearMiss")
+            choice.node.childNode(withName: "meteor.body", recursively: false)?.removeAction(forKey: "meteor.spin")
+            choice.node.removeFromParentNode()
+        }
+        hasResolvedCurrentEncounter = false
+    }
+
+    func createMeteorNode(at laneX: Float, answerValue: Int, isCorrect: Bool) -> SCNNode? {
+        guard let meteorScene = SCNScene(named: "art.scnassets/meteor_detailed.dae") else {
+            print("Could not load meteor_detailed.dae")
+            return nil
+        }
+
+        let rootNode = SCNNode()
+        rootNode.name = isCorrect ? "meteor.correct" : "meteor.wrong"
+        rootNode.position = SCNVector3(x: laneX, y: 1.2, z: -30)
+        rootNode.scale = SCNVector3(x: 0.3, y: 0.3, z: 0.3)
+
+        let meteorVisual = SCNNode()
+        meteorVisual.name = "meteor.body"
+        for child in meteorScene.rootNode.childNodes {
+            meteorVisual.addChildNode(child.clone())
+        }
+        meteorVisual.scale = SCNVector3(x: 0.94, y: 0.94, z: 0.94)
+        rootNode.addChildNode(meteorVisual)
+
+        // Add invisible tap area box for easier tapping
+        let tapAreaSize: CGFloat = 2.5  // Larger hitbox
+        let tapArea = SCNBox(width: tapAreaSize, height: tapAreaSize, length: tapAreaSize, chamferRadius: 0)
+        tapArea.firstMaterial?.diffuse.contents = UIColor.clear
+        tapArea.firstMaterial?.isDoubleSided = true
+        let tapAreaNode = SCNNode(geometry: tapArea)
+        tapAreaNode.name = "meteor.tapArea"
+        rootNode.addChildNode(tapAreaNode)
+        
+        let labelAnchor = SCNNode()
+        labelAnchor.name = "meteor.labelAnchor"
+        rootNode.addChildNode(labelAnchor)
+
+        let shadowText = SCNText(string: "\(answerValue)", extrusionDepth: 0.1)
+        shadowText.font = UIFont.orbitronBold(size: 1.9)
+        shadowText.flatness = 0.2
+        shadowText.firstMaterial?.diffuse.contents = UIColor.black.withAlphaComponent(0.85)
+        shadowText.firstMaterial?.emission.contents = UIColor.black
+        let shadowNode = SCNNode(geometry: shadowText)
+        let shadowBounds = shadowText.boundingBox
+        shadowNode.scale = SCNVector3(x: 0.3, y: 0.3, z: 0.3)
+        shadowNode.position = SCNVector3(
+            x: -((shadowBounds.max.x - shadowBounds.min.x) * 0.3) / 2 + 0.08,
+            y: 0.02,
+            z: 1.26
+        )
+        shadowNode.opacity = 0
+        labelAnchor.addChildNode(shadowNode)
+
+        let answerText = SCNText(string: "\(answerValue)", extrusionDepth: 0.08)
+        answerText.font = UIFont.orbitronBold(size: 1.9)
+        answerText.flatness = 0.2
+        answerText.firstMaterial?.diffuse.contents = UIColor.white
+        answerText.firstMaterial?.emission.contents = UIColor.white.withAlphaComponent(0.18)
+        answerText.firstMaterial?.lightingModel = .constant  // Ignore lighting, always show full color
+        let answerNode = SCNNode(geometry: answerText)
+        let answerBounds = answerText.boundingBox
+        answerNode.name = "meteor.label"
+        answerNode.scale = SCNVector3(x: 0.3, y: 0.3, z: 0.3)
+        answerNode.position = SCNVector3(
+            x: -((answerBounds.max.x - answerBounds.min.x) * 0.3) / 2,
+            y: 0.08,
+            z: 1.32
+        )
+        answerNode.opacity = 0
+        labelAnchor.addChildNode(answerNode)
+
+        let pulseUp = SCNAction.scale(to: 1.0, duration: 0.26)
+        pulseUp.timingMode = .easeOut
+        rootNode.runAction(pulseUp) {
+            SCNTransaction.begin()
+            SCNTransaction.animationDuration = 0.14
+            shadowNode.opacity = 1
+            answerNode.opacity = 1
+            SCNTransaction.commit()
+        }
+
+        return rootNode
+    }
+
+    func sendUntappedMeteorsPastShip(excluding preservedNode: SCNNode? = nil, duration: TimeInterval = 0.38) {
+        for choice in activeMeteorChoices where choice.node !== preservedNode {
+            choice.node.removeAction(forKey: "meteor.flight")
+            choice.node.removeAction(forKey: "meteor.nearMiss")
+            let driftX: Float = choice.laneX >= 0 ? 1.8 : -1.8
+            let escape = SCNAction.group([
+                SCNAction.move(by: SCNVector3(x: driftX, y: 0.45, z: 16), duration: duration),
+                SCNAction.fadeOut(duration: duration)
+            ])
+            choice.node.runAction(.sequence([escape, .removeFromParentNode()]), forKey: "meteor.escape")
+        }
+    }
+
+    func animateWrongMeteorNearMiss(_ choice: MeteorChoice, completion: @escaping () -> Void) {
+        choice.node.removeAction(forKey: "meteor.flight")
+        choice.node.removeAction(forKey: "meteor.escape")
+        let passX = choice.laneX * 0.55
+        let dive = SCNAction.move(to: SCNVector3(x: passX, y: -2.4, z: 1.1), duration: 0.42)
+        dive.timingMode = .easeIn
+        let slideAway = SCNAction.group([
+            SCNAction.move(by: SCNVector3(x: choice.laneX >= 0 ? 1.3 : -1.3, y: -0.1, z: 6.0), duration: 0.34),
+            SCNAction.fadeOut(duration: 0.32)
+        ])
+        choice.node.runAction(.sequence([dive, slideAway, .removeFromParentNode()]), forKey: "meteor.nearMiss") {
+            completion()
+        }
+    }
+
+    func animateWrongMeteorFlyBy(_ choice: MeteorChoice, completion: (() -> Void)? = nil) {
+        choice.node.removeAction(forKey: "meteor.flight")
+        choice.node.removeAction(forKey: "meteor.escape")
+        let passX = choice.laneX >= 0 ? choice.laneX + 1.0 : choice.laneX - 1.0
+        let dive = SCNAction.move(to: SCNVector3(x: passX, y: -2.35, z: 0.9), duration: 0.3)
+        dive.timingMode = .easeIn
+        let streakAway = SCNAction.group([
+            SCNAction.move(by: SCNVector3(x: choice.laneX >= 0 ? 1.7 : -1.7, y: -0.08, z: 7.2), duration: 0.24),
+            SCNAction.fadeOut(duration: 0.2)
+        ])
+        choice.node.runAction(.sequence([dive, streakAway, .removeFromParentNode()]), forKey: "meteor.escape") {
+            completion?()
+        }
+    }
+
+    func performShipDodgeRun(to laneX: Float, completion: (() -> Void)? = nil) {
+        let moveToLane = SCNAction.move(to: SCNVector3(x: laneX, y: -2.25, z: 0), duration: 0.28)
+        moveToLane.timingMode = .easeInEaseOut
+        let bank = SCNAction.rotateBy(x: 0, y: 0, z: CGFloat(-laneX * 0.12), duration: 0.18)
+        let level = SCNAction.rotateTo(x: 0, y: CGFloat(Float.pi), z: 0, duration: 0.18, usesShortestUnitArc: true)
+        let surgeForward = SCNAction.move(to: SCNVector3(x: laneX, y: -2.05, z: -1.35), duration: 0.22)
+        surgeForward.timingMode = .easeOut
+        let settleBack = SCNAction.move(to: SCNVector3(x: laneX, y: -2.25, z: 0), duration: 0.24)
+        settleBack.timingMode = .easeInEaseOut
+        spaceship.runAction(.sequence([
+            .group([moveToLane, bank]),
+            .group([surgeForward, level]),
+            settleBack
+        ])) {
+            completion?()
+        }
+    }
+
+    func explodeMeteorNode(_ node: SCNNode, fragmentCount: Int = 6, dramatic: Bool = false) {
+        let meteorPosition = node.presentation.position
+        AudioManager.shared.playMeteorExplosion()
+        node.removeAction(forKey: "meteor.flight")
+        node.removeAction(forKey: "meteor.escape")
+        node.removeAction(forKey: "meteor.nearMiss")
+        node.childNode(withName: "meteor.body", recursively: false)?.removeAction(forKey: "meteor.spin")
+        node.removeFromParentNode()
+
+        for _ in 0..<fragmentCount {
+            if let meteorHalfScene = SCNScene(named: "art.scnassets/meteor_half.dae") {
+                let fragment = SCNNode()
+                for child in meteorHalfScene.rootNode.childNodes {
+                    fragment.addChildNode(child.clone())
+                }
+
+                let scale: Float = dramatic ? 0.34 : 0.28
+                fragment.scale = SCNVector3(x: scale, y: scale, z: scale)
+                fragment.position = meteorPosition
+                gameScene.rootNode.addChildNode(fragment)
+
+                let randomX = Float.random(in: dramatic ? -5...5 : -4...4)
+                let randomY = Float.random(in: dramatic ? -4...4 : -3...3)
+                let randomZ = Float.random(in: dramatic ? -2...8 : 2...6)
+                let moveAction = SCNAction.move(by: SCNVector3(x: randomX, y: randomY, z: randomZ), duration: dramatic ? 1.9 : 1.4)
+                let rotateAction = SCNAction.rotateBy(
+                    x: CGFloat.random(in: 0...10),
+                    y: CGFloat.random(in: 0...10),
+                    z: CGFloat.random(in: 0...10),
+                    duration: dramatic ? 1.9 : 1.4
+                )
+                let fadeAction = SCNAction.fadeOut(duration: dramatic ? 1.5 : 1.1)
+                fragment.runAction(.sequence([.group([moveAction, rotateAction, fadeAction]), .removeFromParentNode()]))
+            }
+        }
+    }
+
+    func resolveShipDamage(at impactPosition: SCNVector3) {
+        guard !isEndingSession else { return }
+
+        lives -= 1
+        updateLivesDisplay()
+        currentStreak = 0
+        updateStreakDisplay()
+
+        if let impactMeteor = activeMeteorChoices.first(where: { $0.node.parent != nil })?.node {
+            explodeMeteorNode(impactMeteor, fragmentCount: 8, dramatic: true)
+        } else {
+            let impactNode = SCNNode()
+            impactNode.position = impactPosition
+            gameScene.rootNode.addChildNode(impactNode)
+            explodeMeteorNode(impactNode, fragmentCount: 8, dramatic: true)
+        }
+
+        clearActiveMeteorEncounter()
+
+        if lives > 0 {
+            shakeShip()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                self.isResolvingTap = false
+                self.spawnMeteorWithQuestion()
+            }
+        } else {
+            explodeShip()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                self.isResolvingTap = false
+                self.showGameOver()
+            }
+        }
+    }
+
+    func node(_ candidate: SCNNode, belongsTo root: SCNNode) -> Bool {
+        var current: SCNNode? = candidate
+        while let node = current {
+            if node == root {
+                return true
+            }
+            current = node.parent
+        }
+        return false
+    }
+
+    @objc func handleSceneTap(_ recognizer: UITapGestureRecognizer) {
+        guard !isEndingSession, !isInMalfunctionMode, !hasResolvedCurrentEncounter, !isResolvingTap else { return }
+        guard !activeMeteorChoices.isEmpty else { return }
+
+        let location = recognizer.location(in: sceneView)
+        let hitResults = sceneView.hitTest(location, options: [
+            SCNHitTestOption.searchMode: SCNHitTestSearchMode.all.rawValue
+        ])
+        guard let hitNode = hitResults.first?.node else { return }
+        guard let selectedChoice = activeMeteorChoices.first(where: { choice in
+            node(hitNode, belongsTo: choice.node)
+        }) else { return }
+
+
+        if selectedChoice.isCorrect {
+            isResolvingTap = true
+            hasResolvedCurrentEncounter = true
+            totalMeteorsDestroyed += 1
+            currentStreak += 1
+            topScore = max(topScore, currentStreak)
+            recordCorrectAnswer(for: currentQuestionText, firstTry: true)
+            firstAttemptCorrect += 1
+            let problemKey = normalizedProblemKey(from: currentQuestionText)
+            perfectProblems[problemKey, default: 0] += 1
+            updateStreakDisplay()
+
+            // Move ship to meteor position first
+            currentPosition = selectedChoice.laneX
+            let quickMove = SCNAction.move(to: SCNVector3(x: selectedChoice.laneX, y: -2.25, z: 0), duration: 0.2)
+            quickMove.timingMode = .easeInEaseOut
+            spaceship.runAction(quickMove) {
+                // Then shoot laser after ship is in position
+                self.shootLaser(at: selectedChoice.node) {
+                    self.explodeMeteorNode(selectedChoice.node)
+                    self.sendUntappedMeteorsPastShip(excluding: selectedChoice.node, duration: 0.42)
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                        self.isResolvingTap = false
+                        self.clearActiveMeteorEncounter()
+                        if self.hasMasteredReplayProblemSet() {
+                            self.completeReplaySession()
+                        } else if self.shouldTriggerMalfunctionAfterCurrentWave() {
+                            self.beginMalfunctionSequence()
+                        } else if !self.isReplaySession && self.questionNumber >= self.missionQuestionLimit {
+                            self.completeMission()
+                        } else {
+                            self.spawnMeteorWithQuestion()
+                        }
+                    }
+                }
+            }
+        } else {
+            if difficulty == .easy {
+                markQuestionForRetryIfNeeded(currentQuestionText)
+            }
+            if difficulty == .easy && attemptsLeft > 1 {
+                isResolvingTap = true
+                attemptsLeft -= 1
+                activeMeteorChoices.removeAll { $0.node == selectedChoice.node }
+                meteor = activeMeteorChoices.first(where: { $0.isCorrect })?.node
+                
+                animateWrongMeteorNearMiss(selectedChoice) {
+                    self.isResolvingTap = false
+                }
+                
+                // Perform barrel roll to dodge, delayed to sync with near-miss
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    let barrelRoll = SCNAction.rotateBy(x: 0, y: 0, z: CGFloat.pi * 2, duration: 0.4)
+                    barrelRoll.timingMode = .easeInEaseOut
+                    self.spaceship.runAction(barrelRoll)
+                }
+                
+                return
+            }
+
+            isResolvingTap = true
+            hasResolvedCurrentEncounter = true
+            missedQuestions.append(currentQuestionText)
+            recordMiss(for: currentQuestionText)
+
+            activeMeteorChoices.removeAll { $0.node == selectedChoice.node }
+
+            let fallbackImpactNode = activeMeteorChoices
+                .first(where: { $0.isCorrect && $0.node.parent != nil })?.node
+                ?? activeMeteorChoices.first(where: { !$0.isCorrect && $0.node !== selectedChoice.node && $0.node.parent != nil })?.node
+
+            let shipImpactPosition = self.spaceship.presentation.position
+            self.currentPosition = shipImpactPosition.x
+            self.animateWrongMeteorFlyBy(selectedChoice)
+            self.sendUntappedMeteorsPastShip(excluding: fallbackImpactNode, duration: 0.24)
+
+            if let fallbackImpactNode {
+                activeMeteorChoices = activeMeteorChoices.filter { $0.node == fallbackImpactNode }
+                meteor = fallbackImpactNode
+                fallbackImpactNode.removeAction(forKey: "meteor.flight")
+                fallbackImpactNode.removeAction(forKey: "meteor.escape")
+                fallbackImpactNode.removeAction(forKey: "meteor.nearMiss")
+                let impactMove = SCNAction.move(to: SCNVector3(x: shipImpactPosition.x, y: shipImpactPosition.y, z: shipImpactPosition.z), duration: 0.55)
+                impactMove.timingMode = .easeIn
+                fallbackImpactNode.runAction(impactMove, forKey: "meteor.impact") {
+                    self.isResolvingTap = false
+                    self.resolveShipDamage(at: fallbackImpactNode.presentation.position)
+                }
+            } else {
+                activeMeteorChoices.removeAll()
+                meteor = nil
+                self.isResolvingTap = false
+                self.resolveShipDamage(at: shipImpactPosition)
+            }
+        }
+    }
+
     func shouldTriggerMalfunctionAfterCurrentWave() -> Bool {
         guard !isReplaySession else { return false }
         guard malfunctionTriggerWaves.contains(totalMeteorsDestroyed) else { return false }
@@ -1026,8 +1349,7 @@ class GameViewController: UIViewController {
 
         isInMalfunctionMode = true
         triggeredMalfunctionWaves.insert(totalMeteorsDestroyed)
-        meteor?.removeAllActions()
-        meteor?.removeFromParentNode()
+        clearActiveMeteorEncounter()
         answerButtons.forEach {
             $0.isEnabled = false
             $0.alpha = 0
@@ -1041,7 +1363,6 @@ class GameViewController: UIViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             guard self.isInMalfunctionMode else { return }
             self.questionPanel.alpha = 0
-            self.controlPanel.alpha = 0
             UIView.animate(withDuration: 0.25) {
                 self.malfunctionOverlay.alpha = 1.0
             }
@@ -1063,7 +1384,6 @@ class GameViewController: UIViewController {
         }) { _ in
             self.malfunctionOverlay.isHidden = true
             self.questionPanel.alpha = 1.0
-            self.controlPanel.alpha = 1.0
             self.spawnMeteorWithQuestion()
         }
     }
@@ -1150,11 +1470,11 @@ class GameViewController: UIViewController {
     func startMalfunctionShipWeave() {
         spaceship.removeAction(forKey: "malfunction.weave")
         let positions: [SCNVector3] = [
-            SCNVector3(x: -1.0, y: -0.7, z: 0),
-            SCNVector3(x: 0.9, y: -1.5, z: 0),
-            SCNVector3(x: -0.5, y: -1.8, z: 0),
-            SCNVector3(x: 1.1, y: -0.9, z: 0),
-            SCNVector3(x: 0.0, y: -1.0, z: 0)
+            SCNVector3(x: -1.0, y: -1.95, z: 0),
+            SCNVector3(x: 0.9, y: -2.7, z: 0),
+            SCNVector3(x: -0.5, y: -2.95, z: 0),
+            SCNVector3(x: 1.1, y: -2.15, z: 0),
+            SCNVector3(x: 0.0, y: -2.25, z: 0)
         ]
         let rolls: [CGFloat] = [0.22, -0.26, 0.18, -0.2, 0.0]
         var actions: [SCNAction] = []
@@ -1170,7 +1490,7 @@ class GameViewController: UIViewController {
 
     func stopMalfunctionShipWeave() {
         spaceship.removeAction(forKey: "malfunction.weave")
-        let settleMove = SCNAction.move(to: SCNVector3(x: 0, y: -1, z: 0), duration: 0.22)
+        let settleMove = SCNAction.move(to: SCNVector3(x: 0, y: -2.25, z: 0), duration: 0.22)
         settleMove.timingMode = .easeInEaseOut
         let settleRotate = SCNAction.rotateTo(x: 0, y: CGFloat(Float.pi), z: 0, duration: 0.22, usesShortestUnitArc: true)
         settleRotate.timingMode = .easeInEaseOut
@@ -1184,9 +1504,8 @@ class GameViewController: UIViewController {
             completeMission()
             return
         }
-        
-        // Remove old meteor if exists
-        meteor?.removeFromParentNode()
+
+        clearActiveMeteorEncounter()
         
         questionNumber += 1
         
@@ -1196,70 +1515,16 @@ class GameViewController: UIViewController {
         currentQuestionText = question
         attemptsLeft = maxAttempts
         recordPresentedQuestion(question)
-        
-        // Fade out question and buttons
         DispatchQueue.main.async {
             guard !self.isEndingSession else { return }
-            UIView.animate(withDuration: 0.2, animations: {
-                self.questionPanel.alpha = 0
-                self.answerButtons.forEach { $0.alpha = 0 }
-            }, completion: { _ in
-                guard !self.isEndingSession else { return }
-                // Update question text
-                self.questionLabel.text = question
-                
-                // Show/hide and position buttons based on count
-                self.layoutAnswerButtons(for: options.count)
-                
-                for (i, button) in self.answerButtons.enumerated() {
-                    if i < options.count {
-                        button.setTitle("\(options[i])", for: .normal)
-                        button.isEnabled = true
-                        self.styleAnswerButton(
-                            button,
-                            accent: self.arcadeCool,
-                            fillColors: [self.arcadeCool.withAlphaComponent(0.42), self.arcadePanelSoft]
-                        )
-                        button.isHidden = false
-                    } else {
-                        button.isHidden = true
-                    }
-                }
-                
-                // Fade in new question and buttons
-                UIView.animate(withDuration: 0.3, delay: 0.1, options: .curveEaseOut, animations: {
-                    self.questionPanel.alpha = 1.0
-                    self.answerButtons.forEach { button in
-                        if !button.isHidden {
-                            button.alpha = 1.0
-                        }
-                    }
-                })
-            })
+            self.questionLabel.text = question
+            self.questionPanel.alpha = 1.0
+            self.answerButtons.forEach {
+                $0.isEnabled = false
+                $0.alpha = 0
+                $0.isHidden = true
+            }
         }
-        
-        // Load detailed meteor asset
-        guard let meteorScene = SCNScene(named: "art.scnassets/meteor_detailed.dae") else {
-            print("Could not load meteor_detailed.dae")
-            return
-        }
-        
-        meteor = SCNNode()
-        for child in meteorScene.rootNode.childNodes {
-            meteor?.addChildNode(child)
-        }
-        
-        // Random position for this question
-        currentPosition = Float.random(in: -2.0...2.0)
-        
-        meteor?.scale = SCNVector3(x: 0.8, y: 0.8, z: 0.8)
-        meteor?.position = SCNVector3(x: currentPosition, y: 1, z: -30)
-        gameScene.rootNode.addChildNode(meteor!)
-        
-        // Move ship to match meteor position with roll animation
-        moveShipToPosition(currentPosition)
-        
-        // Progressive speed increase starts after 24 questions (2 full rounds of 12 tables)
         let baseDuration = 6.0  // 6 seconds - comfortable but encourages quick thinking
         let speedIncrease: Double
         
@@ -1271,104 +1536,40 @@ class GameViewController: UIViewController {
             speedIncrease = Double(questionNumber - 24) * 0.15
         }
         
-        let meteorDuration = max(1.5, baseDuration - speedIncrease)  // Min 1.5 seconds - intense!
-        
-        // Meteor always moves toward ship at current position
-        let moveAction = SCNAction.move(to: SCNVector3(x: currentPosition, y: -1, z: 0), duration: meteorDuration)
-        let rotateAction = SCNAction.repeatForever(SCNAction.rotateBy(x: 1, y: 2, z: 0.5, duration: 1.0))
-        meteor?.runAction(rotateAction)
-        meteor?.runAction(moveAction) {
-            // If meteor reaches ship (wasn't answered in time)
-            if !self.isEndingSession, self.meteor?.parent != nil {
-                print("⏰ Meteor timeout - hitting ship")
-                self.handleMeteorTimeout()
+        let meteorDuration = max(1.4, (baseDuration - speedIncrease) * 0.55)
+        let lanePositions = lanePositionsByCount[options.count] ?? lanePositionsByCount[3] ?? [-2.5, 0, 2.5]
+        currentPosition = 0
+        moveShipToPosition(0)
+
+        activeMeteorChoices = options.enumerated().compactMap { index, option in
+            guard index < lanePositions.count, let meteorNode = createMeteorNode(at: lanePositions[index], answerValue: option, isCorrect: option == answer) else {
+                return nil
             }
+            gameScene.rootNode.addChildNode(meteorNode)
+            let rotateAction = SCNAction.repeatForever(SCNAction.rotateBy(x: 1, y: 2, z: 0.5, duration: 1.0))
+            let moveAction = SCNAction.move(to: SCNVector3(x: lanePositions[index], y: self.meteorHoverY, z: self.meteorHoverZ), duration: meteorDuration)
+            moveAction.timingMode = .easeOut
+            meteorNode.childNode(withName: "meteor.body", recursively: false)?.runAction(rotateAction, forKey: "meteor.spin")
+            meteorNode.runAction(moveAction, forKey: "meteor.flight")
+            return MeteorChoice(node: meteorNode, answerValue: option, laneX: lanePositions[index], isCorrect: option == answer)
         }
-        
-        // Increase star speed gradually after round 24
+        meteor = activeMeteorChoices.first(where: { $0.isCorrect })?.node
         if questionNumber > 24 {
             starSpeed = min(0.8, 0.3 + Float(questionNumber - 24) * 0.015)
         }
     }
     
     @objc func answerTapped(_ sender: UIButton) {
-        guard !isEndingSession else { return }
-        guard let answerText = sender.title(for: .normal), let selectedAnswer = Int(answerText) else { return }
-        
-        if selectedAnswer == currentAnswer {
-            // Correct answer - shoot laser
-            currentStreak += 1
-            if currentStreak > topScore {
-                topScore = currentStreak
-            }
-            
-            // Track statistics
-            totalMeteorsDestroyed += 1
-            recordCorrectAnswer(for: currentQuestionText, firstTry: attemptsLeft == maxAttempts)
-            if attemptsLeft == maxAttempts {
-                firstAttemptCorrect += 1
-                // Track this specific problem as perfect (format: "3×4")
-                let problemKey = normalizedProblemKey(from: currentQuestionText)
-                perfectProblems[problemKey, default: 0] += 1
-            } else {
-                secondAttemptCorrect += 1
-            }
-            
-            updateStreakDisplay()
-            
-            shootLaser()
-            styleAnswerButton(
-                sender,
-                accent: arcadeSignal,
-                fillColors: [arcadeSignalBright, arcadeSignal]
-            )
-            
-            // Disable all buttons briefly and fade them
-            answerButtons.forEach { $0.isEnabled = false }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                guard !self.isEndingSession else { return }
-                if self.hasMasteredReplayProblemSet() {
-                    self.completeReplaySession()
-                } else if self.shouldTriggerMalfunctionAfterCurrentWave() {
-                    self.beginMalfunctionSequence()
-                } else if !self.isReplaySession && self.questionNumber >= self.missionQuestionLimit {
-                    self.completeMission()
-                } else {
-                    self.spawnMeteorWithQuestion()
-                }
-            }
-        } else {
-            // Wrong answer
-            if difficulty == .easy {
-                markQuestionForRetryIfNeeded(currentQuestionText)
-            }
-            styleAnswerButton(
-                sender,
-                accent: arcadeDanger,
-                fillColors: [arcadeDanger, arcadeSignal.withAlphaComponent(0.58)]
-            )
-            sender.isEnabled = false
-            attemptsLeft -= 1
-            updateMissionLabels()
-            
-            if attemptsLeft <= 0 {
-                // Track missed question
-                missedQuestions.append(currentQuestionText)
-                recordMiss(for: currentQuestionText)
-                // Hit by meteor
-                meteorHitsShip()
-            }
-        }
+        return
     }
     
-    func shootLaser() {
+    func shootLaser(at targetNode: SCNNode, completion: @escaping () -> Void) {
         // Play laser sound
         AudioManager.shared.playLaserFire()
 
         let shipPosition = spaceship.presentation.position
         let startPosition = SCNVector3(x: shipPosition.x, y: shipPosition.y + 0.08, z: shipPosition.z - 1.6)
-        let targetPosition = meteor?.presentation.position ?? meteor?.position ?? SCNVector3(x: currentPosition, y: -1, z: -18)
+        let targetPosition = targetNode.presentation.position
         let beamLength = max(distance(from: startPosition, to: targetPosition), 0.6)
 
         // Create a beam that spans from the ship to the meteor's live position
@@ -1396,7 +1597,7 @@ class GameViewController: UIViewController {
         ])
         laser.runAction(group) {
             laser.removeFromParentNode()
-            self.explodeMeteor()
+            completion()
         }
     }
     
@@ -1440,122 +1641,25 @@ class GameViewController: UIViewController {
     
     func handleMeteorTimeout() {
         guard !isEndingSession else { return }
+        guard !isResolvingTap else { return }
         
-        // Meteor reached ship because player didn't answer in time
-        guard let meteor = meteor, meteor.parent != nil else {
-            print("⛔ Meteor already gone")
-            return
-        }
-        
-        // Track missed question
+        guard !hasResolvedCurrentEncounter else { return }
+        hasResolvedCurrentEncounter = true
+        isResolvingTap = true
         missedQuestions.append(currentQuestionText)
         recordMiss(for: currentQuestionText)
         if difficulty == .easy {
             markQuestionForRetryIfNeeded(currentQuestionText)
         }
-        
-        // Lose a life
-        lives -= 1
-        print("⚠️ TIMEOUT HIT! Lives remaining: \(lives)")
-        updateLivesDisplay()
-        
-        // Reset streak on hit
-        currentStreak = 0
-        updateStreakDisplay()
-        
-        // Meteor is already at ship position, just explode it
-        breakMeteorIntoPieces()
-        
-        if lives > 0 {
-            // Ship survives - flash red and shake
-            shakeShip()
-        } else {
-            // Final life - ship explodes too
-            explodeShip()
-        }
-        
-        // Disable buttons
-        DispatchQueue.main.async {
-            self.answerButtons.forEach { $0.isEnabled = false }
-        }
-        
-        if lives > 0 {
-            // Still have lives - continue game
-            print("✅ Continuing with \(lives) lives")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                self.spawnMeteorWithQuestion()
-            }
-        } else {
-            // No lives left - show game over after explosion
-            print("💀 GAME OVER - No lives remaining")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                self.showGameOver()
-            }
-        }
+        let lingeringChoices = activeMeteorChoices
+        activeMeteorChoices.removeAll()
+        meteor = nil
+        let impactPosition = lingeringChoices.first(where: { $0.node.parent != nil })?.node.presentation.position ?? SCNVector3(x: 0, y: -2.25, z: 0)
+        resolveShipDamage(at: impactPosition)
     }
     
     func meteorHitsShip() {
-        guard !isEndingSession else { return }
-        
-        // Player selected wrong answer twice
-        guard let meteor = meteor else {
-            print("⛔ meteorHitsShip called but meteor is nil")
-            return
-        }
-        
-        // Prevent duplicate calls
-        if meteor.parent == nil {
-            print("⛔ Meteor already removed, skipping")
-            return
-        }
-        
-        // Lose a life first
-        lives -= 1
-        print("⚠️ HIT! Lives remaining: \(lives)")
-        updateLivesDisplay()
-        
-        // Reset streak on hit
-        currentStreak = 0
-        updateStreakDisplay()
-        
-        // Stop meteor's approach animation and make it collide with ship
-        meteor.removeAllActions()
-        
-        let collisionAction = SCNAction.move(to: SCNVector3(x: currentPosition, y: -1, z: 0), duration: 0.5)
-        meteor.runAction(collisionAction) {
-            // Explode meteor into pieces
-            self.breakMeteorIntoPieces()
-            
-            if self.lives > 0 {
-                // Ship survives - flash red and shake
-                self.shakeShip()
-            } else {
-                // Final life - ship explodes too
-                self.explodeShip()
-            }
-        }
-        
-        // Disable buttons
-        DispatchQueue.main.async {
-            self.answerButtons.forEach { $0.isEnabled = false }
-        }
-        
-        if lives > 0 {
-            // Still have lives - continue game
-            print("✅ Continuing with \(lives) lives")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                self.spawnMeteorWithQuestion()
-                self.answerButtons.forEach {
-                    $0.backgroundColor = UIColor(red: 0.2, green: 0.4, blue: 0.8, alpha: 1.0)
-                }
-            }
-        } else {
-            // No lives left - show game over after explosion
-            print("💀 GAME OVER - No lives remaining")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                self.showGameOver()
-            }
-        }
+        resolveShipDamage(at: SCNVector3(x: currentPosition, y: -2.25, z: 0))
     }
     
     func breakMeteorIntoPieces() {
@@ -1702,8 +1806,7 @@ class GameViewController: UIViewController {
         didCompleteMission = true
         isEndingSession = true
 
-        meteor?.removeAllActions()
-        meteor?.removeFromParentNode()
+        clearActiveMeteorEncounter()
         lastMissionReward = PlayerProfileStore.shared.awardStars(calculateMissionStars())
         questionLabel.text = "\(missionQuestionLimit) / \(missionQuestionLimit)"
         answerButtons.forEach { $0.isEnabled = false }
@@ -1724,12 +1827,11 @@ class GameViewController: UIViewController {
             self.persistSessionStatsIfNeeded()
             self.isEndingSession = false
             self.questionPanel.isHidden = true
-            self.controlPanel.isHidden = true
             self.livesContainer.isHidden = true
             self.streakLabel.superview?.isHidden = true
             self.answerButtons.forEach { $0.isHidden = true }
             self.spaceship.isHidden = true
-            self.meteor?.removeFromParentNode()
+            self.clearActiveMeteorEncounter()
             AudioManager.shared.stopThruster()
             self.addSpinningMeteorDecoration()
             
@@ -2110,8 +2212,7 @@ class GameViewController: UIViewController {
         isEndingSession = true
         persistSessionStatsIfNeeded()
         
-        meteor?.removeAllActions()
-        meteor?.removeFromParentNode()
+        clearActiveMeteorEncounter()
         questionLabel.text = "CLEAR!"
         answerButtons.forEach { $0.isEnabled = false }
         
@@ -2484,15 +2585,14 @@ class GameViewController: UIViewController {
         isEndingSession = true
         starfieldTimer?.invalidate()
         starfieldTimer = nil
-        meteor?.removeAllActions()
-        meteor?.removeFromParentNode()
+        clearActiveMeteorEncounter()
         answerButtons.forEach { $0.isEnabled = false }
         AudioManager.shared.stopThruster()
         exitToMenuCallback?()
     }
     
     func moveShipToPosition(_ x: Float) {
-        let targetPosition = SCNVector3(x: x, y: -1, z: 0)
+        let targetPosition = SCNVector3(x: x, y: -2.25, z: 0)
         
         // Calculate roll based on direction and distance
         let rollAngle = -x * 0.3  // Negative because banking left = positive roll

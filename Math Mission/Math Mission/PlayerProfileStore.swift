@@ -11,26 +11,26 @@ import Combine
 import SwiftData
 
 enum PlayerAvatar: String, CaseIterable, Codable {
-    case comet
-    case rocket
-    case planet
-    case satellite
-    case moon
-    case star
+    case avatar1 = "avatar-1"
+    case avatar2 = "avatar-2"
+    case avatar3 = "avatar-3"
+    case avatar4 = "avatar-4"
+    case avatar5 = "avatar-5"
+    case avatar6 = "avatar-6"
 
-    var symbolName: String {
-        switch self {
-        case .comet: return "sparkles"
-        case .rocket: return "rocket.fill"
-        case .planet: return "globe.americas.fill"
-        case .satellite: return "dot.radiowaves.left.and.right"
-        case .moon: return "moon.stars.fill"
-        case .star: return "star.circle.fill"
-        }
+    var imageName: String {
+        rawValue
     }
 
     var title: String {
-        rawValue.capitalized
+        switch self {
+        case .avatar1: return "Character 1"
+        case .avatar2: return "Character 2"
+        case .avatar3: return "Character 3"
+        case .avatar4: return "Character 4"
+        case .avatar5: return "Character 5"
+        case .avatar6: return "Character 6"
+        }
     }
 }
 
@@ -150,7 +150,7 @@ final class PlayerProfile {
     }
 
     var avatar: PlayerAvatar {
-        get { PlayerAvatar(rawValue: avatarRawValue) ?? .rocket }
+        get { PlayerAvatar(rawValue: avatarRawValue) ?? .avatar1 }
         set { avatarRawValue = newValue.rawValue }
     }
 }
@@ -321,7 +321,7 @@ final class PlayerProfileStore: ObservableObject {
     }
 
     var activeAvatar: PlayerAvatar {
-        activeProfile?.avatar ?? .star
+        activeProfile?.avatar ?? .avatar1
     }
 
     var isGuestActive: Bool {

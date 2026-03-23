@@ -41,18 +41,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         ]
         
         for fontName in fontNames {
-            guard let fontURL = Bundle.main.url(forResource: fontName.replacingOccurrences(of: ".ttf", with: ""), withExtension: "ttf"),
-                  let fontDataProvider = CGDataProvider(url: fontURL as CFURL),
-                  let font = CGFont(fontDataProvider) else {
+            guard let fontURL = Bundle.main.url(forResource: fontName.replacingOccurrences(of: ".ttf", with: ""), withExtension: "ttf") else {
                 print("⚠️ Failed to load font: \(fontName)")
                 continue
             }
             
             var error: Unmanaged<CFError>?
-            if !CTFontManagerRegisterGraphicsFont(font, &error) {
+            if !CTFontManagerRegisterFontsForURL(fontURL as CFURL, .process, &error) {
                 print("⚠️ Failed to register font \(fontName): \(error.debugDescription)")
             } else {
-                print("✅ Registered font: \(font.postScriptName as String? ?? fontName)")
+                print("✅ Registered font: \(fontName)")
             }
         }
     }

@@ -214,6 +214,29 @@ class AudioManager {
         playSoundEffect("forceField_000", volume: 0.42)
     }
     
+    func playStarCollect() {
+        // Use m4a-specific loading for star sound
+        if let url = Bundle.main.url(forResource: "star-01", withExtension: "m4a") {
+            do {
+                let player = try AVAudioPlayer(contentsOf: url)
+                player.volume = 0.5
+                player.prepareToPlay()
+                
+                // Keep strong reference while playing
+                activePlayers.append(player)
+                player.play()
+                
+                // Remove reference after playback finishes
+                let duration = player.duration
+                DispatchQueue.main.asyncAfter(deadline: .now() + duration + 0.1) { [weak self] in
+                    self?.activePlayers.removeAll { $0 === player }
+                }
+            } catch {
+                print("⚠️ Failed to play star sound: \(error)")
+            }
+        }
+    }
+    
     private func playSoundEffect(_ name: String, volume: Float) {
         // Create new player instance to allow overlapping sounds
         if let url = Bundle.main.url(forResource: name, withExtension: "wav") {

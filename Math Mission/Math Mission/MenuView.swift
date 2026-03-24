@@ -673,16 +673,22 @@ struct MenuView: View {
                     .font(.custom("Orbitron-Bold", size: 24))
                     .foregroundColor(.white)
                     .frame(minWidth: 220)
-                    .padding(.horizontal, 28)
-                    .padding(.vertical, 16)
+                    .frame(height: 66)
                     .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(ArcadePalette.signal.opacity(0.18))
+                        BeveledPanelShape(cut: 14)
+                            .fill(
+                                LinearGradient(
+                                    colors: [ArcadePalette.signalBright, ArcadePalette.signal, ArcadePalette.signalMuted],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(ArcadePalette.signalBright, lineWidth: 1.6)
+                        BeveledPanelShape(cut: 14)
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1.5)
                     )
+                    .shadow(color: ArcadePalette.signal.opacity(0.35), radius: 14, y: 8)
                     .opacity(startPromptPulse ? 1.0 : 0.55)
             }
             
@@ -1033,7 +1039,7 @@ struct MenuView: View {
                 PilotSelectionCard(
                     title: profile.name,
                     avatar: profile.avatar,
-                    isSelected: profileStore.activeProfile?.id == profile.id
+                    isSelected: false
                 )
                 .frame(maxWidth: fillWidth ? .infinity : nil)
             }

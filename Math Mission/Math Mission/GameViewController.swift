@@ -570,6 +570,12 @@ class GameViewController: UIViewController {
         exitButton.addTarget(self, action: #selector(exitGame), for: .touchUpInside)
         view.addSubview(exitButton)
         
+        // Hidden debug button in top-left to trigger mission complete
+        let debugButton = UIButton(frame: CGRect(x: 16, y: topInset + 4, width: 60, height: 60))
+        debugButton.backgroundColor = .clear
+        debugButton.addTarget(self, action: #selector(debugCompleteMission), for: .touchUpInside)
+        view.addSubview(debugButton)
+        
         statusPanel = UIView(frame: CGRect(x: view.bounds.width - 168, y: topPanelY, width: 152, height: panelHeight))
         // No background panel styling
         view.addSubview(statusPanel)
@@ -2485,6 +2491,7 @@ class GameViewController: UIViewController {
                     starLabel.alpha = 0
                 }) { _ in
                     starLabel.removeFromSuperview()
+                    AudioManager.shared.playStarCollect()
                     onStarArrive?()
                     group.leave()
                 }
@@ -2572,6 +2579,19 @@ class GameViewController: UIViewController {
         answerButtons.forEach { $0.isEnabled = false }
         AudioManager.shared.stopThruster()
         exitToMenuCallback?()
+    }
+    
+    @objc func debugCompleteMission() {
+        // Fill in some sample stats
+        totalMeteorsDestroyed = missionQuestionLimit
+        firstAttemptCorrect = 25
+        currentStreak = 15
+        topScore = 15
+        repairsCompleted = 2
+        repairStarsEarned = 4
+        
+        // Trigger mission complete
+        completeMission()
     }
     
     func moveShipToPosition(_ x: Float) {

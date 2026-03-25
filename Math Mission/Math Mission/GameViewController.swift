@@ -83,6 +83,7 @@ class GameViewController: UIViewController {
     var activeMeteorChoices: [MeteorChoice] = []
     var hasResolvedCurrentEncounter = false
     var isResolvingTap = false
+    var meteorTimeoutWork: DispatchWorkItem?
     var questionLabel: UILabel!
     var questionPanel: UIView!
     var streakLabel: UILabel!
@@ -1276,6 +1277,14 @@ class GameViewController: UIViewController {
                 activeMeteorChoices.removeAll { $0.node == selectedChoice.node }
                 meteor = activeMeteorChoices.first(where: { $0.isCorrect })?.node
                 
+                // Reset timeout - give more time for second attempt
+                meteorTimeoutWork?.cancel()
+                let newWork = DispatchWorkItem { [weak self] in
+                    self?.handleMeteorTimeout()
+                }
+                meteorTimeoutWork = newWork
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3.25, execute: newWork)
+                
                 animateWrongMeteorNearMiss(selectedChoice) {
                     self.isResolvingTap = false
                 }
@@ -1546,6 +1555,15 @@ class GameViewController: UIViewController {
         if questionNumber > 24 {
             starSpeed = min(0.8, 0.3 + Float(questionNumber - 24) * 0.015)
         }
+        
+        // Add timeout - meteor strikes ship after hovering time if not answered
+        meteorTimeoutWork?.cancel()
+        let hoverDelay = meteorDuration + 3.25
+        let work = DispatchWorkItem { [weak self] in
+            self?.handleMeteorTimeout()
+        }
+        meteorTimeoutWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + hoverDelay, execute: work)
     }
     
     @objc func answerTapped(_ sender: UIButton) {
@@ -1631,8 +1649,8 @@ class GameViewController: UIViewController {
     func handleMeteorTimeout() {
         guard !isEndingSession else { return }
         guard !isResolvingTap else { return }
-        
         guard !hasResolvedCurrentEncounter else { return }
+        
         hasResolvedCurrentEncounter = true
         isResolvingTap = true
         missedQuestions.append(currentQuestionText)
@@ -1640,11 +1658,41 @@ class GameViewController: UIViewController {
         if difficulty == .easy {
             markQuestionForRetryIfNeeded(currentQuestionText)
         }
+        
         let lingeringChoices = activeMeteorChoices
         activeMeteorChoices.removeAll()
         meteor = nil
-        let impactPosition = lingeringChoices.first(where: { $0.node.parent != nil })?.node.presentation.position ?? SCNVector3(x: 0, y: -2.25, z: 0)
-        resolveShipDamage(at: impactPosition)
+        
+        // Pick one meteor to strike the ship (prefer correct answer meteor)
+        guard let strikingChoice = lingeringChoices.first(where: { $0.isCorrect }) ?? lingeringChoices.first else {
+            resolveShipDamage(at: SCNVector3(x: 0, y: -2.25, z: 0))
+            return
+        }
+        
+        let shipPosition = SCNVector3(x: currentPosition, y: -2.25, z: 0)
+        
+        // Make the striking meteor fly toward the ship
+        let strikeAction = SCNAction.move(to: shipPosition, duration: 0.5)
+        strikeAction.timingMode = SCNActionTimingMode.easeIn
+        strikingChoice.node.runAction(strikeAction) {
+            self.breakMeteorIntoPieces(meteorNode: strikingChoice.node)
+            self.resolveShipDamage(at: shipPosition)
+        }
+        
+        // Make all other meteors fly away toward camera and slightly to the side
+        for choice in lingeringChoices where choice.node !== strikingChoice.node {
+            let sideOffset: Float = choice.laneX < 0 ? -3.0 : 3.0
+            let awayPosition = SCNVector3(
+                x: choice.laneX + sideOffset,
+                y: Float.random(in: -2...3),
+                z: Float.random(in: 5...12)
+            )
+            let flyAway = SCNAction.move(to: awayPosition, duration: 1.0)
+            flyAway.timingMode = SCNActionTimingMode.easeIn
+            choice.node.runAction(flyAway) {
+                choice.node.removeFromParentNode()
+            }
+        }
     }
     
     func meteorHitsShip() {
@@ -1653,13 +1701,17 @@ class GameViewController: UIViewController {
     
     func breakMeteorIntoPieces() {
         guard let meteor = meteor else { return }
-        let meteorPosition = meteor.position
+        breakMeteorIntoPieces(meteorNode: meteor)
+    }
+    
+    func breakMeteorIntoPieces(meteorNode: SCNNode) {
+        let meteorPosition = meteorNode.position
         
         // Play ship hit sound
         AudioManager.shared.playShipHit()
         
         // Remove original meteor
-        meteor.removeFromParentNode()
+        meteorNode.removeFromParentNode()
         
         // Create 8 meteor_half fragments for dramatic collision
         for _ in 0..<8 {

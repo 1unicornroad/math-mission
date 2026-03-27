@@ -1347,6 +1347,7 @@ class GameViewController: UIViewController {
 
         isInMalfunctionMode = true
         triggeredMalfunctionWaves.insert(totalMeteorsDestroyed)
+        meteorTimeoutWork?.cancel()
         clearActiveMeteorEncounter()
         answerButtons.forEach {
             $0.isEnabled = false
@@ -1648,6 +1649,7 @@ class GameViewController: UIViewController {
     
     func handleMeteorTimeout() {
         guard !isEndingSession else { return }
+        guard !isInMalfunctionMode else { return }
         guard !isResolvingTap else { return }
         guard !hasResolvedCurrentEncounter else { return }
         

@@ -209,13 +209,13 @@ private struct LegacyPlayerProfile: Codable {
 enum ShipCatalog {
     static let allShips: [SpaceShip] = [
         SpaceShip(name: "Nova Striker", modelName: "craft_speederA.dae", unlockRequirement: "Default", unlockLevel: 0),
-        SpaceShip(name: "Photon Blade", modelName: "craft_racer.dae", unlockRequirement: "Complete 2× table", unlockLevel: 1),
-        SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete 3× and 4× tables", unlockLevel: 2),
-        SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete 5× and 6× tables", unlockLevel: 3),
-        SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete 7× and 8× tables", unlockLevel: 4),
-        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete 8× and 9× tables or earn 60 stars", unlockLevel: 5),
-        SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete 11× and 12× tables or earn 120 stars", unlockLevel: 6),
-        SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium and Hard modes or earn 200 stars", unlockLevel: 7)
+        SpaceShip(name: "Photon Blade", modelName: "craft_racer.dae", unlockRequirement: "Complete Table 2", unlockLevel: 1),
+        SpaceShip(name: "Starfire Interceptor", modelName: "craft_speederB.dae", unlockRequirement: "Complete Tables 3 and 4", unlockLevel: 2),
+        SpaceShip(name: "Nebula Runner", modelName: "craft_speederC.dae", unlockRequirement: "Complete Tables 5 and 6", unlockLevel: 3),
+        SpaceShip(name: "Asteroid Crusher", modelName: "craft_miner.dae", unlockRequirement: "Complete Tables 7 and 8", unlockLevel: 4),
+        SpaceShip(name: "Quantum Falcon", modelName: "craft_speederD.dae", unlockRequirement: "Complete Tables 8 and 9 or earn 60 stars", unlockLevel: 5),
+        SpaceShip(name: "Titan Hauler", modelName: "craft_cargoA.dae", unlockRequirement: "Complete Tables 11 and 12 or earn 120 stars", unlockLevel: 6),
+        SpaceShip(name: "Voidbreaker Prime", modelName: "craft_cargoB.dae", unlockRequirement: "Beat Medium and Infinite modes or earn 200 stars", unlockLevel: 7)
     ]
 }
 
@@ -228,6 +228,18 @@ enum ShipProgression {
 
     static func starRequirement(for unlockLevel: Int) -> Int? {
         starThresholds[unlockLevel]
+    }
+    
+    static func requiredTables(for unlockLevel: Int) -> [Int] {
+        switch unlockLevel {
+        case 1: return [2]
+        case 2: return [3, 4]
+        case 3: return [5, 6]
+        case 4: return [7, 8]
+        case 5: return [8, 9]
+        case 6: return [11, 12]
+        default: return []
+        }
     }
 
     static func isUnlocked(_ ship: SpaceShip, progress: PlayerProgress) -> Bool {
@@ -261,11 +273,11 @@ enum ShipProgression {
     static func requirementText(for ship: SpaceShip) -> String {
         switch ship.unlockLevel {
         case 5:
-            return "Complete 8× and 9× tables or earn \(starRequirement(for: 5) ?? 0) stars"
+            return "Complete Tables 8 and 9 or earn \(starRequirement(for: 5) ?? 0) stars"
         case 6:
-            return "Complete 11× and 12× tables or earn \(starRequirement(for: 6) ?? 0) stars"
+            return "Complete Tables 11 and 12 or earn \(starRequirement(for: 6) ?? 0) stars"
         case 7:
-            return "Beat Medium and Hard modes or earn \(starRequirement(for: 7) ?? 0) stars"
+            return "Beat Medium and Infinite modes or earn \(starRequirement(for: 7) ?? 0) stars"
         default:
             return ship.unlockRequirement
         }

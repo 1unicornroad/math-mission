@@ -28,17 +28,17 @@ enum ArithmeticMode: String, CaseIterable {
 
     var tileLabel: String {
         switch self {
-        case .multiplication: return "TABLE"
-        case .division: return "FACTS"
+        case .multiplication: return "MULTIPLY"
+        case .division: return "DIVIDE"
         }
     }
 
     func tableSummary(for table: Int) -> String {
         switch self {
         case .multiplication:
-            return "\(table)\(symbol)"
+            return "TABLE \(table)"
         case .division:
-            return "÷\(table)"
+            return "DIVISOR \(table)"
         }
     }
 
@@ -59,8 +59,8 @@ enum ArithmeticMode: String, CaseIterable {
 
     var subsectionTitle: String {
         switch self {
-        case .multiplication: return "Tables"
-        case .division: return "Divisors"
+        case .multiplication: return "Table Deck"
+        case .division: return "Divisor Deck"
         }
     }
 
@@ -83,6 +83,254 @@ enum ArithmeticMode: String, CaseIterable {
     }
 }
 
+struct FutureTableCard: View {
+    enum SizeStyle {
+        case regular
+        case compact
+    }
+    let heroText: String
+    let title: String
+    let footer: String
+    let accent: Color
+    let isSelected: Bool
+    var sizeStyle: SizeStyle = .regular
+    @State private var shimmerOffset: CGFloat = -1.1
+    
+    var body: some View {
+        let metrics = cardMetrics
+        let cardShape = RoundedRectangle(cornerRadius: metrics.outerCornerRadius, style: .continuous)
+        ZStack {
+            RoundedRectangle(cornerRadius: metrics.outerCornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: backgroundColors,
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            RoundedRectangle(cornerRadius: metrics.outerCornerRadius, style: .continuous)
+                .strokeBorder(borderColor.opacity(isSelected ? 0.95 : 0.42), lineWidth: isSelected ? 1.6 : 1.0)
+            RoundedRectangle(cornerRadius: metrics.outerCornerRadius, style: .continuous)
+                .fill(Color.white.opacity(0.02))
+            RoundedRectangle(cornerRadius: metrics.outerCornerRadius, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(isSelected ? 0.10 : 0.05),
+                            Color.clear,
+                            accent.opacity(isSelected ? 0.12 : 0.04)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            GeometryReader { geometry in
+                LinearGradient(
+                    colors: [
+                        Color.clear,
+                        Color.white.opacity(isSelected ? 0.24 : 0.12),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: geometry.size.width * 0.52)
+                .rotationEffect(.degrees(18))
+                .offset(x: geometry.size.width * shimmerOffset)
+                .blendMode(.screen)
+            }
+            
+            VStack(spacing: 0) {
+                HStack {
+                    Capsule()
+                        .fill(accent.opacity(isSelected ? 0.32 : 0.16))
+                        .frame(width: metrics.topCapsuleWidth, height: metrics.topCapsuleHeight)
+                    Spacer()
+                    Rectangle()
+                        .fill(borderColor.opacity(isSelected ? 0.82 : 0.38))
+                        .frame(width: metrics.diamondSize, height: metrics.diamondSize)
+                        .rotationEffect(.degrees(45))
+                }
+                .padding(.horizontal, metrics.topPadding)
+                .padding(.top, metrics.topPadding)
+                
+                Spacer(minLength: metrics.topSpacer)
+                
+                Text(heroText)
+                    .font(.custom("Orbitron-Bold", size: metrics.heroFontSize))
+                    .foregroundColor(.white)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .shadow(color: borderColor.opacity(0.4), radius: metrics.heroShadowRadius, y: metrics.heroShadowYOffset)
+                
+                Text(title.uppercased())
+                    .font(.custom("Exo 2 SemiBold", size: metrics.titleFontSize))
+                    .foregroundColor(ArcadePalette.textSecondary)
+                    .tracking(metrics.titleTracking)
+                    .padding(.top, metrics.titleTopPadding)
+                
+                Spacer(minLength: metrics.bottomSpacer)
+                
+                if !footer.isEmpty {
+                    Text(footer.uppercased())
+                        .font(.custom("Exo 2 SemiBold", size: metrics.footerFontSize))
+                        .foregroundColor(isSelected ? Color.white.opacity(0.82) : ArcadePalette.textMuted)
+                        .tracking(metrics.footerTracking)
+                        .padding(.horizontal, metrics.footerHorizontalPadding)
+                        .padding(.bottom, metrics.footerBottomPadding)
+                } else {
+                    Capsule()
+                        .fill(borderColor.opacity(isSelected ? 0.65 : 0.24))
+                        .frame(width: metrics.bottomCapsuleWidth, height: metrics.bottomCapsuleHeight)
+                        .padding(.bottom, metrics.bottomCapsuleBottomPadding)
+                }
+            }
+            
+            RoundedRectangle(cornerRadius: metrics.innerCornerRadius, style: .continuous)
+                .strokeBorder(borderColor.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [4, 5]))
+                .padding(metrics.innerStrokePadding)
+            
+            Circle()
+                .fill(accent.opacity(isSelected ? 0.24 : 0.12))
+                .frame(width: metrics.glowSize, height: metrics.glowSize)
+                .blur(radius: metrics.glowBlur)
+                .offset(x: metrics.glowOffsetX, y: metrics.glowOffsetY)
+        }
+        .shadow(color: accent.opacity(isSelected ? 0.26 : 0.12), radius: isSelected ? metrics.selectedShadowRadius : metrics.shadowRadius, y: metrics.shadowYOffset)
+        .aspectRatio(0.80, contentMode: .fit)
+        .frame(maxHeight: metrics.maxHeight)
+        .clipShape(cardShape)
+        .onAppear {
+            shimmerOffset = -0.45
+            withAnimation(.linear(duration: isSelected ? 2.2 : 3.4).repeatForever(autoreverses: false)) {
+                shimmerOffset = 1.15
+            }
+        }
+    }
+    
+    private var backgroundColors: [Color] {
+        if isSelected {
+            return [
+                accent.opacity(0.28),
+                ArcadePalette.panelBottom.opacity(0.96),
+                Color.black.opacity(0.74)
+            ]
+        }
+        return [
+            ArcadePalette.panelTop.opacity(0.96),
+            ArcadePalette.panelBottom.opacity(0.92),
+            Color.black.opacity(0.78)
+        ]
+    }
+
+    private var borderColor: Color {
+        return accent
+    }
+
+    private var cardMetrics: CardMetrics {
+        switch sizeStyle {
+        case .regular:
+            return CardMetrics(
+                outerCornerRadius: 22,
+                innerCornerRadius: 18,
+                topCapsuleWidth: 42,
+                topCapsuleHeight: 6,
+                diamondSize: 10,
+                topPadding: 10,
+                topSpacer: 4,
+                heroFontSize: 34,
+                heroShadowRadius: 10,
+                heroShadowYOffset: 4,
+                titleFontSize: 10,
+                titleTracking: 1.5,
+                titleTopPadding: 4,
+                bottomSpacer: 10,
+                footerFontSize: 9,
+                footerTracking: 1.2,
+                footerHorizontalPadding: 8,
+                footerBottomPadding: 10,
+                bottomCapsuleWidth: 36,
+                bottomCapsuleHeight: 4,
+                bottomCapsuleBottomPadding: 14,
+                innerStrokePadding: 8,
+                glowSize: 72,
+                glowBlur: 12,
+                glowOffsetX: -18,
+                glowOffsetY: -28,
+                shadowRadius: 10,
+                selectedShadowRadius: 18,
+                shadowYOffset: 8,
+                maxHeight: 128
+            )
+        case .compact:
+            return CardMetrics(
+                outerCornerRadius: 11,
+                innerCornerRadius: 9,
+                topCapsuleWidth: 21,
+                topCapsuleHeight: 3,
+                diamondSize: 5,
+                topPadding: 5,
+                topSpacer: 2,
+                heroFontSize: 17,
+                heroShadowRadius: 5,
+                heroShadowYOffset: 2,
+                titleFontSize: 5,
+                titleTracking: 0.7,
+                titleTopPadding: 2,
+                bottomSpacer: 4,
+                footerFontSize: 5,
+                footerTracking: 0.6,
+                footerHorizontalPadding: 4,
+                footerBottomPadding: 4,
+                bottomCapsuleWidth: 18,
+                bottomCapsuleHeight: 2,
+                bottomCapsuleBottomPadding: 7,
+                innerStrokePadding: 4,
+                glowSize: 36,
+                glowBlur: 6,
+                glowOffsetX: -9,
+                glowOffsetY: -14,
+                shadowRadius: 5,
+                selectedShadowRadius: 9,
+                shadowYOffset: 4,
+                maxHeight: 48
+            )
+        }
+    }
+}
+
+private struct CardMetrics {
+    let outerCornerRadius: CGFloat
+    let innerCornerRadius: CGFloat
+    let topCapsuleWidth: CGFloat
+    let topCapsuleHeight: CGFloat
+    let diamondSize: CGFloat
+    let topPadding: CGFloat
+    let topSpacer: CGFloat
+    let heroFontSize: CGFloat
+    let heroShadowRadius: CGFloat
+    let heroShadowYOffset: CGFloat
+    let titleFontSize: CGFloat
+    let titleTracking: CGFloat
+    let titleTopPadding: CGFloat
+    let bottomSpacer: CGFloat
+    let footerFontSize: CGFloat
+    let footerTracking: CGFloat
+    let footerHorizontalPadding: CGFloat
+    let footerBottomPadding: CGFloat
+    let bottomCapsuleWidth: CGFloat
+    let bottomCapsuleHeight: CGFloat
+    let bottomCapsuleBottomPadding: CGFloat
+    let innerStrokePadding: CGFloat
+    let glowSize: CGFloat
+    let glowBlur: CGFloat
+    let glowOffsetX: CGFloat
+    let glowOffsetY: CGFloat
+    let shadowRadius: CGFloat
+    let selectedShadowRadius: CGFloat
+    let shadowYOffset: CGFloat
+    let maxHeight: CGFloat
+}
 private struct MenuPracticeTile: View {
     let title: String
 
@@ -569,7 +817,12 @@ struct MenuView: View {
     @State private var selectedAvatar: PlayerAvatar? = nil
     @FocusState private var isNameFieldFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 4)
+    private var tableColumns: [GridItem] {
+        if horizontalSizeClass == .regular {
+            return Array(repeating: GridItem(.flexible(), spacing: 12), count: 6)
+        }
+        return Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
+    }
     
     var body: some View {
         GeometryReader { geometry in
@@ -872,7 +1125,7 @@ struct MenuView: View {
 
                         ArithmeticModePicker(selection: $arithmeticMode)
                         
-                        LazyVGrid(columns: columns, spacing: 10) {
+                        LazyVGrid(columns: tableColumns, spacing: horizontalSizeClass == .regular ? 12 : 8) {
                             ForEach(1...12, id: \.self) { number in
                                 Button {
                                     AudioManager.shared.playButtonTap()
@@ -1263,7 +1516,7 @@ extension Difficulty {
         switch self {
         case .easy: return "EASY"
         case .medium: return "MEDIUM"
-        case .hard: return "HARD"
+        case .hard: return "INFINITE"
         }
     }
 }
@@ -1274,32 +1527,12 @@ private struct MenuTableTile: View {
     let isSelected: Bool
     
     var body: some View {
-        VStack(spacing: 4) {
-            Text(arithmeticMode.tableSummary(for: number))
-                .font(.custom("Orbitron-Bold", size: 22))
-                .foregroundColor(.white)
-            Text(arithmeticMode.tileLabel)
-                .font(.custom("Exo 2 SemiBold", size: 10))
-                .foregroundColor(isSelected ? Color.white.opacity(0.76) : ArcadePalette.textMuted)
-                .tracking(1.2)
-        }
-        .padding(.horizontal, 6)
-        .frame(maxWidth: .infinity)
-        .frame(height: 68)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(
-                    isSelected
-                        ? ArcadePalette.signal.opacity(0.20)
-                        : ArcadePalette.panelBottom.opacity(0.82)
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(
-                    isSelected ? ArcadePalette.signalBright : ArcadePalette.panelLine.opacity(0.85),
-                    lineWidth: isSelected ? 1.5 : 1.0
-                )
+        FutureTableCard(
+            heroText: arithmeticMode == .multiplication ? "\(number)×" : "÷\(number)",
+            title: arithmeticMode == .multiplication ? "Table" : "Divisor",
+            footer: "",
+            accent: arithmeticMode == .multiplication ? ArcadePalette.signalBright : ArcadePalette.coolLine,
+            isSelected: isSelected
         )
     }
 }

@@ -55,7 +55,9 @@ struct ShipSelectionView: View {
                             ShipCardView(
                                 ship: shipWithProgressText(ship),
                                 isUnlocked: checkIfUnlocked(ship),
-                                isSelected: selectedShip.modelName == ship.modelName
+                                isSelected: selectedShip.modelName == ship.modelName,
+                                arithmeticMode: arithmeticMode,
+                                progress: profileStore.activeProgress
                             )
                             .tag(ship)
                         }
@@ -130,10 +132,28 @@ struct ShipSelectionView: View {
                 .font(.custom("Orbitron-Bold", size: 34))
                 .foregroundColor(ArcadePalette.textPrimary)
             
-            Text(hangarSummary)
-                .font(.custom("Exo 2 SemiBold", size: 13))
-                .foregroundColor(ArcadePalette.signalBright)
-                .tracking(1.2)
+            if !headerDeckTables.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    TableCardDeckView(
+                        tables: headerDeckTables,
+                        arithmeticMode: arithmeticMode,
+                        accent: arithmeticMode == .multiplication ? ArcadePalette.signalBright : ArcadePalette.coolLine,
+                        maxVisible: headerDeckTables.count,
+                        cardHeight: 48,
+                        overlap: 30,
+                        sizeStyle: .compact,
+                        verticalInset: 10,
+                        usesBaselineAnchoredRotation: false,
+                        alignment: .leading
+                    )
+                }
+                .padding(.top, 4)
+            } else {
+                Text(hangarSummary)
+                    .font(.custom("Exo 2 SemiBold", size: 13))
+                    .foregroundColor(ArcadePalette.signalBright)
+                    .tracking(1.2)
+            }
         }
         .padding(.horizontal, 4)
     }
@@ -188,6 +208,13 @@ struct ShipSelectionView: View {
             .sorted()
             .map { arithmeticMode.tableSummary(for: $0) }
             .joined(separator: " • ")
+    }
+    
+    private var headerDeckTables: [Int] {
+        if !selectedTables.isEmpty {
+            return Array(selectedTables.sorted())
+        }
+        return []
     }
     
     private var difficultyOptions: some View {
@@ -261,6 +288,8 @@ struct ShipCardView: View {
     let ship: SpaceShip
     let isUnlocked: Bool
     let isSelected: Bool
+    let arithmeticMode: ArithmeticMode
+    let progress: PlayerProgress
     
     var body: some View {
         ArcadePanel(accent: accentColor) {
@@ -306,17 +335,42 @@ struct ShipCardView: View {
                 }
                 .frame(height: 180)
                 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(ship.name.uppercased())
-                        .font(.custom("Orbitron-Bold", size: 19))
-                        .foregroundColor(ArcadePalette.textPrimary)
-                        .minimumScaleFactor(0.75)
-                        .lineLimit(1)
-                    
-                    Text(isUnlocked ? "READY" : "LOCKED")
-                        .font(.custom("Exo 2 SemiBold", size: 12))
-                        .foregroundColor(isUnlocked ? ArcadePalette.signalBright : ArcadePalette.warning)
-                        .tracking(1.4)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(ship.name.uppercased())
+                                .font(.custom("Orbitron-Bold", size: 19))
+                                .foregroundColor(ArcadePalette.textPrimary)
+                                .minimumScaleFactor(0.75)
+                                .lineLimit(1)
+                            
+                            Text(isUnlocked ? "READY" : "LOCKED")
+                                .font(.custom("Exo 2 SemiBold", size: 12))
+                                .foregroundColor(isUnlocked ? ArcadePalette.signalBright : ArcadePalette.warning)
+                                .tracking(1.4)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .layoutPriority(1)
+                        
+                        Spacer(minLength: 4)
+                        
+                        if !isUnlocked && !ShipProgression.requiredTables(for: ship.unlockLevel).isEmpty {
+                            HStack {
+                                Spacer(minLength: 0)
+                                TableCardDeckView(
+                                    tables: ShipProgression.requiredTables(for: ship.unlockLevel),
+                                    arithmeticMode: .multiplication,
+                                    accent: ArcadePalette.warning,
+                                    maxVisible: 3,
+                                    cardHeight: 48,
+                                    overlap: 30,
+                                    sizeStyle: .compact,
+                                    alignment: .trailing
+                                )
+                            }
+                            .fixedSize(horizontal: true, vertical: false)
+                        }
+                    }
                     
                     if !isUnlocked {
                         Text(ship.unlockRequirement.uppercased())
@@ -334,6 +388,70 @@ struct ShipCardView: View {
         if isSelected && isUnlocked { return ArcadePalette.signal }
         if isUnlocked { return ArcadePalette.coolLine }
         return ArcadePalette.warning
+    }
+}
+
+private struct TableCardDeckView: View {
+    enum DeckAlignment {
+        case leading
+        case trailing
+    }
+    let tables: [Int]
+    let arithmeticMode: ArithmeticMode
+    let accent: Color
+    var maxVisible: Int = 4
+    var cardHeight: CGFloat = 92
+    var overlap: CGFloat = 60
+    var sizeStyle: FutureTableCard.SizeStyle = .regular
+    var verticalInset: CGFloat = 0
+    var usesBaselineAnchoredRotation: Bool = true
+    var alignment: DeckAlignment = .trailing
+    
+    var body: some View {
+        let visibleTables = Array(tables.prefix(maxVisible))
+        let totalWidth = visibleTables.isEmpty ? 0 : cardHeight * 0.80 + CGFloat(max(visibleTables.count - 1, 0)) * overlap
+        let totalHeight = cardHeight + (verticalInset * 2)
+        let stackAlignment: Alignment = usesBaselineAnchoredRotation
+            ? (alignment == .leading ? .bottomLeading : .bottomTrailing)
+            : (alignment == .leading ? .leading : .trailing)
+        
+        ZStack(alignment: stackAlignment) {
+            ForEach(Array(visibleTables.enumerated()), id: \.offset) { index, table in
+                FutureTableCard(
+                    heroText: arithmeticMode == .multiplication ? "\(table)×" : "÷\(table)",
+                    title: arithmeticMode == .multiplication ? "Table" : "Divisor",
+                    footer: "",
+                    accent: accent,
+                    isSelected: index == 0,
+                    sizeStyle: sizeStyle
+                )
+                .frame(height: cardHeight)
+                .padding(.vertical, verticalInset)
+                .rotationEffect(
+                    .degrees(rotation(for: index, table: table)),
+                    anchor: usesBaselineAnchoredRotation
+                        ? (alignment == .leading ? .bottomLeading : .bottomTrailing)
+                        : .center
+                )
+                .offset(x: xOffset(for: index, count: visibleTables.count))
+                .zIndex(Double(visibleTables.count - index))
+            }
+        }
+        .frame(width: totalWidth, height: totalHeight, alignment: stackAlignment)
+    }
+    
+    private func rotation(for index: Int, table: Int) -> Double {
+        let base = Double(((table + index) % 5) - 2)
+        return base * 1.4
+    }
+
+    private func xOffset(for index: Int, count: Int) -> CGFloat {
+        switch alignment {
+        case .leading:
+            return CGFloat(index) * overlap
+        case .trailing:
+            return CGFloat(index - count + 1) * overlap
+        }
     }
 }
 
@@ -379,7 +497,7 @@ private struct HangarDifficultyCard: View {
         case .medium:
             return "1 chance"
         case .hard:
-            return "4 answers"
+            return "3 answers"
         }
     }
 }

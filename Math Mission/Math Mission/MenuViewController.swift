@@ -10,7 +10,7 @@ import UIKit
 enum Difficulty: Hashable {
     case easy    // 3 options, 2 tries
     case medium  // 3 options, 1 try
-    case hard    // 4 options, 1 try
+    case hard    // Infinite mode - 3 HUD answers, 1 try
 }
 
 class MenuViewController: UIViewController {
@@ -94,7 +94,7 @@ class MenuViewController: UIViewController {
         difficultyLabel.textAlignment = .center
         view.addSubview(difficultyLabel)
         
-        let difficulties: [(String, Difficulty)] = [("EASY", .easy), ("MEDIUM", .medium), ("HARD", .hard)]
+        let difficulties: [(String, Difficulty)] = [("EASY", .easy), ("MEDIUM", .medium), ("INFINITE", .hard)]
         let diffButtonWidth: CGFloat = 110
         let diffStartX = (view.bounds.width - (CGFloat(difficulties.count) * (diffButtonWidth + spacing) - spacing)) / 2
         

@@ -99,6 +99,7 @@ class GameViewController: UIViewController {
     var hasStartedGameplay = false
     
     // Control panel buttons
+    var controlPanel: UIView!
     var answerButtons: [UIButton] = []
     var statusPanel: UIView!
     var gameOverOverlay: UIView?
@@ -133,6 +134,17 @@ class GameViewController: UIViewController {
     ]
     let meteorHoverY: Float = -0.75
     let meteorHoverZ: Float = -8.8
+    
+    var isInfiniteMode: Bool {
+        difficulty == .hard
+    }
+    
+    var infiniteControlPanelFillColors: [UIColor] {
+        [
+            arcadePanelSoft.withAlphaComponent(0.64),
+            arcadePanel.withAlphaComponent(0.52)
+        ]
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -549,8 +561,10 @@ class GameViewController: UIViewController {
     
     func setupUI() {
         let topInset = max(view.safeAreaInsets.top, 20)
+        let bottomInset = max(view.safeAreaInsets.bottom, 12)
         let panelHeight: CGFloat = 104
         let topPanelY = topInset + 18
+        let controlPanelHeight: CGFloat = 150
         
         livesContainer = UIView(frame: CGRect(x: 16, y: topPanelY, width: 188, height: panelHeight))
         // No background panel styling
@@ -630,11 +644,25 @@ class GameViewController: UIViewController {
         questionLabel.minimumScaleFactor = 0.7
         questionPanel.addSubview(questionLabel)
         
-        // Legacy buttons are kept hidden so the old button flow stays inert while meteor tapping drives gameplay.
+        controlPanel = UIView(frame: CGRect(
+            x: 16,
+            y: view.bounds.height - controlPanelHeight - bottomInset - 12,
+            width: view.bounds.width - 32,
+            height: controlPanelHeight
+        ))
+        applyArcadePanelStyle(
+            to: controlPanel,
+            accent: arcadeSignal,
+            fillColors: infiniteControlPanelFillColors,
+            cornerCut: 20
+        )
+        controlPanel.isHidden = !isInfiniteMode
+        view.addSubview(controlPanel)
+        
         let maxButtons = 4
         
         for i in 0..<maxButtons {
-            let button = UIButton(frame: .zero)
+            let button = UIButton(frame: CGRect(x: 0, y: controlPanel.bounds.height - 116, width: 82, height: 82))
             button.setTitleColor(.white, for: .normal)
             button.titleLabel?.font = UIFont.orbitronBold(size: 30)
             button.tag = i
@@ -645,7 +673,7 @@ class GameViewController: UIViewController {
                 fillColors: [arcadeCool.withAlphaComponent(0.42), arcadePanelSoft]
             )
             button.isHidden = true
-            view.addSubview(button)
+            controlPanel.addSubview(button)
             answerButtons.append(button)
         }
         answerButtons.forEach {
@@ -661,9 +689,11 @@ class GameViewController: UIViewController {
     func layoutGameplayHUD() {
         let sideInset: CGFloat = 16
         let topInset = max(view.safeAreaInsets.top, 20)
+        let bottomInset = max(view.safeAreaInsets.bottom, 12)
         let topPanelY = topInset + 18
         let topPanelHeight: CGFloat = 104
         let questionPanelHeight: CGFloat = 112
+        let controlPanelHeight: CGFloat = 150
         
         livesContainer.frame = CGRect(x: sideInset, y: topPanelY, width: 188, height: topPanelHeight)
         statusPanel.frame = CGRect(x: view.bounds.width - sideInset - 152, y: topPanelY, width: 152, height: topPanelHeight)
@@ -673,6 +703,12 @@ class GameViewController: UIViewController {
             width: view.bounds.width - sideInset * 2,
             height: questionPanelHeight
         )
+        controlPanel.frame = CGRect(
+            x: sideInset,
+            y: view.bounds.height - controlPanelHeight - bottomInset - 12,
+            width: view.bounds.width - sideInset * 2,
+            height: controlPanelHeight
+        )
         
         // No background styling for lives and stats panels
         applyArcadePanelStyle(
@@ -681,16 +717,43 @@ class GameViewController: UIViewController {
             fillColors: [arcadePanelSoft, arcadePanel],
             cornerCut: 20
         )
+        if isInfiniteMode {
+            applyArcadePanelStyle(
+                to: controlPanel,
+                accent: arcadeSignal,
+                fillColors: infiniteControlPanelFillColors,
+                cornerCut: 20
+            )
+        }
         
         hullStatusLabel.frame = CGRect(x: 16, y: 14, width: 84, height: 18)
         exitButton.frame = CGRect(x: view.bounds.width - 40 - 16, y: topInset + 4, width: 40, height: 40)
         layoutStatusMetrics()
         questionLabel.frame = CGRect(x: 18, y: 24, width: questionPanel.bounds.width - 36, height: 60)
+        controlPanel.isHidden = !isInfiniteMode
+        layoutAnswerButtons(for: isInfiniteMode ? 3 : 0)
         layoutMalfunctionOverlay()
     }
     
     func layoutAnswerButtons(for optionCount: Int) {
-        return
+        guard controlPanel != nil else { return }
+        guard optionCount > 0 else { return }
+        
+        let buttonWidth: CGFloat = optionCount == 4 ? 74 : 92
+        let buttonHeight: CGFloat = 82
+        let spacing: CGFloat = 12
+        let totalWidth = buttonWidth * CGFloat(optionCount) + spacing * CGFloat(optionCount - 1)
+        let startX = (controlPanel.bounds.width - totalWidth) / 2
+        let buttonY = controlPanel.bounds.height - buttonHeight - 34
+        
+        for (index, button) in answerButtons.enumerated() where index < optionCount {
+            button.frame = CGRect(
+                x: startX + CGFloat(index) * (buttonWidth + spacing),
+                y: buttonY,
+                width: buttonWidth,
+                height: buttonHeight
+            )
+        }
     }
 
     func setupMalfunctionOverlay() {
@@ -942,7 +1005,7 @@ class GameViewController: UIViewController {
         lastQuestion = question
         
         // Generate wrong answers based on difficulty
-        let optionsCount = difficulty == .hard ? 4 : 3
+        let optionsCount = 3
         var options = [answer]
         
         while options.count < optionsCount {
@@ -982,6 +1045,7 @@ class GameViewController: UIViewController {
 
     func clearActiveMeteorEncounter() {
         let lingeringChoices = activeMeteorChoices
+        let legacyMeteor = meteor
         activeMeteorChoices.removeAll()
         meteor = nil
         lingeringChoices.forEach { choice in
@@ -990,6 +1054,13 @@ class GameViewController: UIViewController {
             choice.node.removeAction(forKey: "meteor.nearMiss")
             choice.node.childNode(withName: "meteor.body", recursively: false)?.removeAction(forKey: "meteor.spin")
             choice.node.removeFromParentNode()
+        }
+        if let legacyMeteor, !lingeringChoices.contains(where: { $0.node === legacyMeteor }) {
+            legacyMeteor.removeAction(forKey: "meteor.flight")
+            legacyMeteor.removeAction(forKey: "meteor.escape")
+            legacyMeteor.removeAction(forKey: "meteor.nearMiss")
+            legacyMeteor.childNode(withName: "meteor.body", recursively: false)?.removeAction(forKey: "meteor.spin")
+            legacyMeteor.removeFromParentNode()
         }
         hasResolvedCurrentEncounter = false
     }
@@ -1217,6 +1288,7 @@ class GameViewController: UIViewController {
     }
 
     @objc func handleSceneTap(_ recognizer: UITapGestureRecognizer) {
+        guard !isInfiniteMode else { return }
         guard !isEndingSession, !isInMalfunctionMode, !hasResolvedCurrentEncounter, !isResolvingTap else { return }
         guard !activeMeteorChoices.isEmpty else { return }
 
@@ -1259,7 +1331,7 @@ class GameViewController: UIViewController {
                             self.completeReplaySession()
                         } else if self.shouldTriggerMalfunctionAfterCurrentWave() {
                             self.beginMalfunctionSequence()
-                        } else if !self.isReplaySession && self.questionNumber >= self.missionQuestionLimit {
+                        } else if !self.isInfiniteMode && !self.isReplaySession && self.questionNumber >= self.missionQuestionLimit {
                             self.completeMission()
                         } else {
                             self.spawnMeteorWithQuestion()
@@ -1499,7 +1571,7 @@ class GameViewController: UIViewController {
     func spawnMeteorWithQuestion() {
         guard !isEndingSession else { return }
         guard !isInMalfunctionMode else { return }
-        guard isReplaySession || questionNumber < missionQuestionLimit else {
+        guard isInfiniteMode || isReplaySession || questionNumber < missionQuestionLimit else {
             completeMission()
             return
         }
@@ -1514,6 +1586,12 @@ class GameViewController: UIViewController {
         currentQuestionText = question
         attemptsLeft = maxAttempts
         recordPresentedQuestion(question)
+        
+        if isInfiniteMode {
+            spawnInfiniteModeMeteor(question: question, answer: answer, options: options)
+            return
+        }
+        
         DispatchQueue.main.async {
             guard !self.isEndingSession else { return }
             self.questionLabel.text = question
@@ -1568,7 +1646,150 @@ class GameViewController: UIViewController {
     }
     
     @objc func answerTapped(_ sender: UIButton) {
-        return
+        guard isInfiniteMode else { return }
+        guard !isEndingSession, !isInMalfunctionMode else { return }
+        guard let answerText = sender.title(for: .normal), let selectedAnswer = Int(answerText) else { return }
+        
+        if selectedAnswer == currentAnswer {
+            currentStreak += 1
+            topScore = max(topScore, currentStreak)
+            totalMeteorsDestroyed += 1
+            recordCorrectAnswer(for: currentQuestionText, firstTry: attemptsLeft == maxAttempts)
+            if attemptsLeft == maxAttempts {
+                firstAttemptCorrect += 1
+                let problemKey = normalizedProblemKey(from: currentQuestionText)
+                perfectProblems[problemKey, default: 0] += 1
+            } else {
+                secondAttemptCorrect += 1
+            }
+            
+            updateStreakDisplay()
+            styleAnswerButton(
+                sender,
+                accent: arcadeSignal,
+                fillColors: [arcadeSignalBright, arcadeSignal]
+            )
+            answerButtons.forEach { $0.isEnabled = false }
+            
+            guard let meteor else { return }
+            shootLaser(at: meteor) {
+                self.explodeMeteorNode(meteor)
+            }
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                guard !self.isEndingSession else { return }
+                if self.hasMasteredReplayProblemSet() {
+                    self.completeReplaySession()
+                } else if self.shouldTriggerMalfunctionAfterCurrentWave() {
+                    self.beginMalfunctionSequence()
+                } else if !self.isInfiniteMode && !self.isReplaySession && self.questionNumber >= self.missionQuestionLimit {
+                    self.completeMission()
+                } else {
+                    self.spawnMeteorWithQuestion()
+                }
+            }
+        } else {
+            if difficulty == .easy {
+                markQuestionForRetryIfNeeded(currentQuestionText)
+            }
+            styleAnswerButton(
+                sender,
+                accent: arcadeDanger,
+                fillColors: [arcadeDanger, arcadeSignal.withAlphaComponent(0.58)]
+            )
+            sender.isEnabled = false
+            attemptsLeft -= 1
+            
+            if attemptsLeft <= 0 {
+                missedQuestions.append(currentQuestionText)
+                recordMiss(for: currentQuestionText)
+                meteorHitsShip()
+            }
+        }
+    }
+    
+    func spawnInfiniteModeMeteor(question: String, answer: Int, options: [Int]) {
+        meteorTimeoutWork?.cancel()
+        clearActiveMeteorEncounter()
+        
+        DispatchQueue.main.async {
+            guard !self.isEndingSession else { return }
+            UIView.animate(withDuration: 0.2, animations: {
+                self.questionPanel.alpha = 0
+                self.answerButtons.forEach { $0.alpha = 0 }
+            }, completion: { _ in
+                guard !self.isEndingSession else { return }
+                self.questionLabel.text = question
+                self.controlPanel.isHidden = false
+                self.layoutAnswerButtons(for: options.count)
+                
+                for (index, button) in self.answerButtons.enumerated() {
+                    if index < options.count {
+                        button.setTitle("\(options[index])", for: .normal)
+                        button.isEnabled = true
+                        self.styleAnswerButton(
+                            button,
+                            accent: self.arcadeCool,
+                            fillColors: [self.arcadeCool.withAlphaComponent(0.42), self.arcadePanelSoft]
+                        )
+                        button.isHidden = false
+                    } else {
+                        button.isHidden = true
+                    }
+                }
+                
+                UIView.animate(withDuration: 0.3, delay: 0.1, options: .curveEaseOut, animations: {
+                    self.questionPanel.alpha = 1.0
+                    self.answerButtons.forEach { button in
+                        if !button.isHidden {
+                            button.alpha = 1.0
+                        }
+                    }
+                })
+            })
+        }
+        
+        guard let meteorScene = SCNScene(named: "art.scnassets/meteor_detailed.dae") else {
+            print("Could not load meteor_detailed.dae")
+            return
+        }
+        
+        meteor = SCNNode()
+        for child in meteorScene.rootNode.childNodes {
+            meteor?.addChildNode(child.clone())
+        }
+        
+        currentPosition = Float.random(in: -2.0...2.0)
+        meteor?.scale = SCNVector3(x: 0.8, y: 0.8, z: 0.8)
+        meteor?.position = SCNVector3(x: currentPosition, y: 1, z: -30)
+        
+        if let meteor {
+            gameScene.rootNode.addChildNode(meteor)
+        }
+        
+        moveShipToPosition(currentPosition)
+        
+        let baseDuration = 6.2
+        let speedIncrease: Double
+        if questionNumber <= 10 {
+            speedIncrease = 0
+        } else {
+            speedIncrease = Double(questionNumber - 10) * 0.18
+        }
+        
+        let meteorDuration = max(1.1, baseDuration - speedIncrease)
+        let moveAction = SCNAction.move(to: SCNVector3(x: currentPosition, y: -1, z: 0), duration: meteorDuration)
+        let rotateAction = SCNAction.repeatForever(SCNAction.rotateBy(x: 1, y: 2, z: 0.5, duration: 1.0))
+        meteor?.runAction(rotateAction, forKey: "meteor.spin")
+        meteor?.runAction(moveAction, forKey: "meteor.flight") {
+            if !self.isEndingSession, !self.isInMalfunctionMode, self.meteor?.parent != nil {
+                self.handleInfiniteModeMeteorTimeout()
+            }
+        }
+        
+        if questionNumber > 10 {
+            starSpeed = min(1.1, 0.3 + Float(questionNumber - 10) * 0.02)
+        }
     }
     
     func shootLaser(at targetNode: SCNNode, completion: @escaping () -> Void) {
@@ -1648,6 +1869,10 @@ class GameViewController: UIViewController {
     }
     
     func handleMeteorTimeout() {
+        if isInfiniteMode {
+            handleInfiniteModeMeteorTimeout()
+            return
+        }
         guard !isEndingSession else { return }
         guard !isInMalfunctionMode else { return }
         guard !isResolvingTap else { return }
@@ -1698,7 +1923,45 @@ class GameViewController: UIViewController {
     }
     
     func meteorHitsShip() {
+        if isInfiniteMode {
+            handleInfiniteModeMeteorTimeout(recordMissedQuestion: false)
+            return
+        }
         resolveShipDamage(at: SCNVector3(x: currentPosition, y: -2.25, z: 0))
+    }
+    
+    func handleInfiniteModeMeteorTimeout(recordMissedQuestion: Bool = true) {
+        guard isInfiniteMode else { return }
+        guard !isEndingSession else { return }
+        guard !isInMalfunctionMode else { return }
+        guard let meteor = meteor, meteor.parent != nil else { return }
+        
+        meteorTimeoutWork?.cancel()
+        if recordMissedQuestion {
+            missedQuestions.append(currentQuestionText)
+            recordMiss(for: currentQuestionText)
+        }
+        lives -= 1
+        updateLivesDisplay()
+        currentStreak = 0
+        updateStreakDisplay()
+        breakMeteorIntoPieces(meteorNode: meteor)
+        
+        DispatchQueue.main.async {
+            self.answerButtons.forEach { $0.isEnabled = false }
+        }
+        
+        if lives > 0 {
+            shakeShip()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                self.spawnMeteorWithQuestion()
+            }
+        } else {
+            explodeShip()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                self.showGameOver()
+            }
+        }
     }
     
     func breakMeteorIntoPieces() {

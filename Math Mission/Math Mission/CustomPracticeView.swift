@@ -160,8 +160,8 @@ struct CustomPracticeView: View {
     
     private func gridColumns(for width: CGFloat) -> [GridItem] {
         let isWide = width >= 900
-        let columnCount = isWide ? 6 : 5
-        let spacing: CGFloat = isWide ? 8 : 10
+        let columnCount = isWide ? 6 : 4
+        let spacing: CGFloat = isWide ? 10 : 8
         return Array(repeating: GridItem(.flexible(), spacing: spacing), count: columnCount)
     }
     
@@ -189,7 +189,7 @@ private struct PracticeGridSection: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.leading, 4)
             
-            LazyVGrid(columns: columns, spacing: 10) {
+            LazyVGrid(columns: columns, spacing: 8) {
                 ForEach(1...12, id: \.self) { multiplier in
                     let problemKey = arithmeticMode.practiceKey(lhs: multiplier, rhs: table)
                     Button {
@@ -200,26 +200,13 @@ private struct PracticeGridSection: View {
                             selectedProblems.insert(problemKey)
                         }
                     } label: {
-                        Text(problemKey)
-                            .font(.custom("Exo 2 SemiBold", size: 14))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 58)
-                            .background(
-                                selectedProblems.contains(problemKey)
-                                    ? ArcadePalette.signal.opacity(0.85)
-                                    : ArcadePalette.panelBottom.opacity(0.92)
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .stroke(
-                                        selectedProblems.contains(problemKey)
-                                            ? ArcadePalette.signalBright
-                                            : ArcadePalette.panelLine,
-                                        lineWidth: 2
-                                    )
-                            )
+                        FutureTableCard(
+                            heroText: arithmeticMode == .multiplication ? "\(multiplier)×" : "\(multiplier)",
+                            title: arithmeticMode == .multiplication ? "Step" : "Solve",
+                            footer: "",
+                            accent: arithmeticMode == .multiplication ? ArcadePalette.signalBright : ArcadePalette.coolLine,
+                            isSelected: selectedProblems.contains(problemKey)
+                        )
                     }
                     .buttonStyle(.plain)
                 }
@@ -230,9 +217,10 @@ private struct PracticeGridSection: View {
     private var sectionTitle: String {
         switch arithmeticMode {
         case .multiplication:
-            return "\(table)× TABLE"
+            return "TABLE \(table)"
         case .division:
-            return "÷\(table) FACTS"
+            return "DIVISOR \(table)"
         }
     }
+    
 }
